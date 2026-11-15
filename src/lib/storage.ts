@@ -7,6 +7,19 @@ import { OrderPhoto } from '@/types';
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
+// Конфигурация для внешнего S3/Cloudflare R2 хранилища (если переданы переменные окружения)
+const R2_CONFIG = {
+  endpoint: process.env.R2_ENDPOINT || process.env.S3_ENDPOINT,
+  bucket: process.env.R2_BUCKET_NAME || process.env.S3_BUCKET_NAME,
+  accessKeyId: process.env.R2_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY,
+  publicUrl: process.env.R2_PUBLIC_URL || process.env.S3_PUBLIC_URL,
+};
+
+export const isExternalStorageEnabled = Boolean(
+  R2_CONFIG.endpoint && R2_CONFIG.bucket && R2_CONFIG.accessKeyId && R2_CONFIG.secretAccessKey
+);
+
 /**
  * Проверка сигнатуры файла (Magic Bytes) на реальный тип изображения
  */
@@ -44,6 +57,8 @@ export function validateMagicBytes(buffer: Buffer): 'jpeg' | 'png' | 'webp' | nu
 
 /**
  * Сохранить и сжать загруженное фото
+ * Поддерживает локальную папку `uploads/` (по умолчанию в dev-режиме)
+ * и автоматический фолбэк при внешней интеграции S3/R2
  */
 export async function saveUploadedPhoto(file: File): Promise<OrderPhoto> {
   if (file.size > MAX_FILE_SIZE) {
@@ -58,12 +73,6 @@ export async function saveUploadedPhoto(file: File): Promise<OrderPhoto> {
     throw new Error('Недопустимый формат файла. Разрешены только JPEG, PNG и WebP');
   }
 
-  await fs.mkdir(UPLOAD_DIR, { recursive: true });
-
-  const photoId = crypto.randomUUID();
-  const filename = `${photoId}.webp`;
-  const filePath = path.join(UPLOAD_DIR, filename);
-
   // Сжатие и конвертация в оптимизированный WebP (макс. 1920x1920)
   const compressedBuffer = await sharp(buffer)
     .resize(1920, 1920, {
@@ -73,6 +82,41 @@ export async function saveUploadedPhoto(file: File): Promise<OrderPhoto> {
     .webp({ quality: 85 })
     .toBuffer();
 
+  const photoId = crypto.randomUUID();
+  const filename = `${photoId}.webp`;
+
+  // Если настроен Cloudflare R2 / S3
+  if (isExternalStorageEnabled && R2_CONFIG.endpoint) {
+    try {
+      const uploadUrl = `${R2_CONFIG.endpoint.replace(/\/$/, '')}/${R2_CONFIG.bucket}/${filename}`;
+      // Отправка в S3-совместимое хранилище
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'image/webp',
+          'Authorization': `Bearer ${R2_CONFIG.accessKeyId}:${R2_CONFIG.secretAccessKey}`,
+        },
+        body: new Uint8Array(compressedBuffer),
+      });
+
+      if (uploadRes.ok) {
+        return {
+          id: photoId,
+          filename,
+          originalName: file.name,
+          mimeType: 'image/webp',
+          sizeBytes: compressedBuffer.length,
+          createdAt: new Date().toISOString(),
+        };
+      }
+    } catch (err) {
+      console.warn('Внешнее S3/R2 хранилище недоступно, переключаемся на локальную папку uploads:', err);
+    }
+  }
+
+  // Локальное хранилище в uploads/
+  await fs.mkdir(UPLOAD_DIR, { recursive: true });
+  const filePath = path.join(UPLOAD_DIR, filename);
   await fs.writeFile(filePath, compressedBuffer);
 
   return {
@@ -86,7 +130,7 @@ export async function saveUploadedPhoto(file: File): Promise<OrderPhoto> {
 }
 
 /**
- * Получить путь к сохранённому файлу
+ * Получить путь или буфер сохранённого файла
  */
 export async function getPhotoBuffer(photoId: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
   try {
@@ -100,7 +144,20 @@ export async function getPhotoBuffer(photoId: string): Promise<{ buffer: Buffer;
       mimeType: 'image/webp',
     };
   } catch (err) {
-    console.error('Error reading photo:', err);
+    // Если файла нет локально и включен R2, пробуем загрузить из R2
+    if (isExternalStorageEnabled && R2_CONFIG.publicUrl) {
+      try {
+        const publicFileUrl = `${R2_CONFIG.publicUrl.replace(/\/$/, '')}/${photoId}.webp`;
+        const res = await fetch(publicFileUrl);
+        if (res.ok) {
+          const ab = await res.arrayBuffer();
+          return {
+            buffer: Buffer.from(ab),
+            mimeType: 'image/webp',
+          };
+        }
+      } catch {}
+    }
     return null;
   }
 }

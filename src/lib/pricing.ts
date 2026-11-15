@@ -211,6 +211,12 @@ export const DEFAULT_SERVICES: ServiceItem[] = [
     basePrices: { S: 25000, M: 30000, L: 37000 },
     zones: ['body_paint'],
     badge: 'Максимум',
+    requiredServiceIds: ['pol_deep_restore'],
+    durationMinutes: 720,
+    activeDurationMinutes: 180,
+    cureDurationMinutes: 540,
+    bufferMinutes: 30,
+    requiredBayType: 'cure',
     order: 6,
   },
   {
@@ -362,3 +368,224 @@ export function getActiveCarZones(items: CartItem[]): Set<ServiceZone> {
   }
   return zones;
 }
+
+// -----------------------------------------------------------
+// МАТРИЦА ПРАВИЛ И ТЕХНОЛОГИЧЕСКИХ ЗАВИСИМОСТЕЙ ТАРИФОВ
+// -----------------------------------------------------------
+
+export interface ServiceDependencyWarning {
+  serviceId: string;
+  serviceName: string;
+  requiredServiceId: string;
+  requiredServiceName: string;
+  message: string;
+}
+
+export interface UpsellRecommendation {
+  serviceId: string;
+  serviceName: string;
+  category: ServiceCategory;
+  price: number;
+  badge?: string;
+  reason: string;
+}
+
+/**
+ * Проверка технологических зависимостей выбранных услуг.
+ * Например: Керамическое покрытие 9H требует предварительной абразивной полировки.
+ */
+export function validateServiceDependencies(
+  items: CartItem[],
+  allTariffs: ServiceItem[]
+): {
+  isValid: boolean;
+  warnings: ServiceDependencyWarning[];
+} {
+  const tariffMap = new Map(allTariffs.map((t) => [t.id, t]));
+  const selectedServiceIds = new Set<string>();
+
+  // Собираем все выбранные ID, а также ID входящих в комплексы услуг
+  for (const item of items) {
+    selectedServiceIds.add(item.serviceId);
+    const tariff = tariffMap.get(item.serviceId);
+    if (tariff?.includedServiceIds) {
+      for (const incId of tariff.includedServiceIds) {
+        selectedServiceIds.add(incId);
+      }
+    }
+  }
+
+  const warnings: ServiceDependencyWarning[] = [];
+
+  for (const item of items) {
+    const tariff = tariffMap.get(item.serviceId);
+    if (!tariff?.requiredServiceIds || tariff.requiredServiceIds.length === 0) continue;
+
+    for (const reqId of tariff.requiredServiceIds) {
+      if (!selectedServiceIds.has(reqId)) {
+        const reqTariff = tariffMap.get(reqId);
+        const reqName = reqTariff ? reqTariff.name : reqId;
+        warnings.push({
+          serviceId: item.serviceId,
+          serviceName: item.name,
+          requiredServiceId: reqId,
+          requiredServiceName: reqName,
+          message: `Услуга «${item.name}» требует предварительного выполнения «${reqName}» для соблюдения технологии.`,
+        });
+      }
+    }
+  }
+
+  return {
+    isValid: warnings.length === 0,
+    warnings,
+  };
+}
+
+/**
+ * Смарт-апсейлы и сопутствующие услуги на основе выбранного состава
+ */
+export function getRecommendedUpsells(
+  items: CartItem[],
+  allTariffs: ServiceItem[],
+  carClass: CarClass = 'M'
+): UpsellRecommendation[] {
+  const tariffMap = new Map(allTariffs.map((t) => [t.id, t]));
+  const selectedIds = new Set(items.map((i) => i.serviceId));
+
+  // Также учитываем то, что уже входит в комплексы
+  for (const item of items) {
+    const t = tariffMap.get(item.serviceId);
+    if (t?.includedServiceIds) {
+      t.includedServiceIds.forEach((inc) => selectedIds.add(inc));
+    }
+  }
+
+  const recommendations: UpsellRecommendation[] = [];
+  const priceClass = carClass === 'OTHER' ? 'L' : carClass;
+
+  // 0. Приоритетные услуги, явно отмеченные владельцем студии галочкой "Рекомендовать в корзине"
+  for (const t of allTariffs) {
+    if (t.recommendInCart && !selectedIds.has(t.id) && !t.isPackage && !t.isCustomPhoto) {
+      recommendations.push({
+        serviceId: t.id,
+        serviceName: t.name,
+        category: t.category,
+        price: t.basePrices[priceClass] || 0,
+        badge: t.badge || 'Рекомендуем',
+        reason: t.shortDesc || 'Популярная дополнительная услуга студии',
+      });
+      if (recommendations.length >= 3) {
+        return recommendations;
+      }
+    }
+  }
+
+  const hasInterior = items.some((i) => i.category === 'interior' || i.serviceId.startsWith('chem_'));
+  const hasPolishing = items.some((i) => i.serviceId.startsWith('pol_') || i.serviceId.includes('polish'));
+  const hasAquapel = selectedIds.has('prot_aquapel');
+  const hasOzonation = selectedIds.has('chem_ozonation');
+  const hasLeatherCare = selectedIds.has('chem_leather_care');
+  const hasWax = selectedIds.has('prot_solid_wax') || selectedIds.has('prot_ceramic_coating');
+
+  // 1. Если выбрана химчистка, но нет озонации -> рекомендуем озонацию
+  if (hasInterior && !hasOzonation && tariffMap.has('chem_ozonation')) {
+    const t = tariffMap.get('chem_ozonation')!;
+    recommendations.push({
+      serviceId: t.id,
+      serviceName: t.name,
+      category: t.category,
+      price: t.basePrices[priceClass] || 2000,
+      badge: 'Антибактериально',
+      reason: 'Удалит стойкие запахи и продезинфицирует воздуховоды после химчистки',
+    });
+  }
+
+  // 2. Если выбрана химчистка или сиденья, но нет консервации кожи -> рекомендуем
+  if (hasInterior && !hasLeatherCare && tariffMap.has('chem_leather_care')) {
+    const t = tariffMap.get('chem_leather_care')!;
+    recommendations.push({
+      serviceId: t.id,
+      serviceName: t.name,
+      category: t.category,
+      price: t.basePrices[priceClass] || 4000,
+      badge: 'Защита кожи',
+      reason: 'Защитит очищенную кожу от заломов, пересыхания и трещин',
+    });
+  }
+
+  // 3. Если выбрана полировка, но нет антидождя -> рекомендуем антидождь
+  if (hasPolishing && !hasAquapel && tariffMap.has('prot_aquapel')) {
+    const t = tariffMap.get('prot_aquapel')!;
+    recommendations.push({
+      serviceId: t.id,
+      serviceName: t.name,
+      category: t.category,
+      price: t.basePrices[priceClass] || 3000,
+      badge: 'Видимость 100%',
+      reason: 'Вода и грязь слетают на скорости без работы дворников',
+    });
+  }
+
+  // 4. Если выбрана полировка, но нет воска/керамики -> рекомендуем воск
+  if (hasPolishing && !hasWax && tariffMap.has('prot_solid_wax')) {
+    const t = tariffMap.get('prot_solid_wax')!;
+    recommendations.push({
+      serviceId: t.id,
+      serviceName: t.name,
+      category: t.category,
+      price: t.basePrices[priceClass] || 7000,
+      badge: 'Финишный блеск',
+      reason: 'Законсервирует зеркальный глянец лака и защитит от реагентов на 6 месяцев',
+    });
+  }
+
+  return recommendations.slice(0, 3);
+}
+
+/**
+ * Расчёт матрицы стоимости и времени (База × Класс × Состояние)
+ */
+export function calculateMatrixItemPricing(
+  service: ServiceItem,
+  carClass: CarClass,
+  isDirty: boolean,
+  quantity: number = 1,
+  config: {
+    classMultipliers?: { S: number; M: number; L: number };
+    dirtyMarkupPercent?: number;
+    priceRoundStep?: number;
+  } = {}
+) {
+  const roundStep = config.priceRoundStep ?? 100;
+  const multipliers = config.classMultipliers ?? { S: 1.0, M: 1.25, L: 1.5 };
+  const effectiveClass = carClass === 'OTHER' ? 'L' : carClass;
+  const classMultiplier = multipliers[effectiveClass] || 1.0;
+
+  // Базовая стоимость на класс S
+  const baseS = service.basePrices?.S || 0;
+  const basePriceForClass = service.basePrices?.[effectiveClass] ?? roundPrice(baseS * classMultiplier, roundStep);
+  const unitPrice = roundPrice(basePriceForClass, roundStep);
+  const itemTotal = unitPrice * Math.max(1, quantity);
+
+  // Расчёт двухфазного времени с учётом класса кузова
+  const activeBase = service.activeDurationMinutes ?? service.durationMinutes ?? 60;
+  const cureBase = service.cureDurationMinutes ?? 0;
+  const bufferBase = service.bufferMinutes ?? 15;
+
+  // Крупный авто требует пропорционально больше времени мастера
+  const activeDurationMinutes = Math.round(activeBase * classMultiplier);
+  const cureDurationMinutes = cureBase; // Время сушки химического состава одинаково
+  const bufferMinutes = bufferBase;
+  const totalDurationMinutes = activeDurationMinutes + cureDurationMinutes + bufferMinutes;
+
+  return {
+    unitPrice,
+    itemTotal,
+    activeDurationMinutes,
+    cureDurationMinutes,
+    bufferMinutes,
+    totalDurationMinutes,
+  };
+}
+

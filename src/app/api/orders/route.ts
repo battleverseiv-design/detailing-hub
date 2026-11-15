@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { prisma } from '@/lib/db';
 import { getStudioSettings } from '@/lib/studio-service';
 import { calculateItemPrice, calculateOrderSummary } from '@/lib/pricing';
+import { createBookingWithTransaction, resolveBookingService } from '@/lib/booking-engine';
+import { notifyNewOrder } from '@/lib/telegram';
 import { CarClass, CartItem, OrderPhoto } from '@/types';
 
 export async function POST(req: NextRequest) {
@@ -13,6 +15,7 @@ export async function POST(req: NextRequest) {
       clientName,
       clientPhone,
       carBrandModel,
+      carLicensePlate,
       carClass,
       isDirty,
       serviceFormat,
@@ -20,6 +23,10 @@ export async function POST(req: NextRequest) {
       desiredDate,
       desiredTime,
       clientComment,
+      source,
+      workbayId,
+      isAdminCreated,
+      preliminaryTotal: adminPrice,
       items,
       photos,
     } = body;
@@ -37,7 +44,27 @@ export async function POST(req: NextRequest) {
       ? String(carBrandModel).trim() 
       : `Автомобиль (${effectiveCarClass})`;
 
-    if (!Array.isArray(items) || items.length === 0) {
+    let inputItems = Array.isArray(items) && items.length > 0 ? items : [];
+
+    // Если запись создана администратором вручную без выбора услуг из каталога
+    if (inputItems.length === 0 && isAdminCreated) {
+      const customPrice = Math.max(0, Number(adminPrice) || 0);
+      inputItems = [{
+        cartItemId: crypto.randomUUID(),
+        serviceId: 'manual_service',
+        name: clientComment ? `Работы: ${clientComment}` : 'Детейлинг работы (Запись вручную)',
+        category: 'packages',
+        carClass: effectiveCarClass as CarClass,
+        isDirty: Boolean(isDirty),
+        quantity: 1,
+        unitPrice: customPrice,
+        itemTotal: customPrice,
+        isCustomPhoto: false,
+        zones: ['none'],
+      }];
+    }
+
+    if (inputItems.length === 0) {
       return NextResponse.json(
         { error: 'Корзина пуста. Выберите хотя бы одну услугу' },
         { status: 400 }
@@ -67,8 +94,23 @@ export async function POST(req: NextRequest) {
     const verifiedItems: CartItem[] = [];
     let hasPhotoAppraisal = false;
 
-    for (const item of items) {
-      if (item.category === 'custom_photo' || item.serviceId === 'custom_photo_service') {
+    for (const item of inputItems) {
+      if (item.serviceId === 'manual_service') {
+        const price = Math.max(0, Number(item.unitPrice) || Number(adminPrice) || 0);
+        verifiedItems.push({
+          cartItemId: item.cartItemId || crypto.randomUUID(),
+          serviceId: 'manual_service',
+          name: item.name || 'Детейлинг работы (Запись вручную)',
+          category: 'packages',
+          carClass: effectiveCarClass as CarClass,
+          isDirty: Boolean(isDirty),
+          quantity: 1,
+          unitPrice: price,
+          itemTotal: price,
+          isCustomPhoto: false,
+          zones: ['none'],
+        });
+      } else if (item.category === 'custom_photo' || item.serviceId === 'custom_photo_service') {
         hasPhotoAppraisal = true;
         verifiedItems.push({
           cartItemId: item.cartItemId || crypto.randomUUID(),
@@ -124,7 +166,7 @@ export async function POST(req: NextRequest) {
 
     // Итоговый серверный расчёт заявки
     const format = serviceFormat === 'mobile' ? 'mobile' : 'studio';
-    const pricing = calculateOrderSummary(
+    let pricing = calculateOrderSummary(
       verifiedItems,
       carClass as CarClass,
       Boolean(isDirty),
@@ -137,6 +179,18 @@ export async function POST(req: NextRequest) {
       }
     );
 
+    // Для ручных заказов администратора с фиксированной ценой
+    if (isAdminCreated && adminPrice != null) {
+      const fixedPrice = Math.max(0, Number(adminPrice) || 0);
+      pricing = {
+        ...pricing,
+        itemsSubtotal: fixedPrice,
+        workTotal: fixedPrice,
+        preliminaryTotal: fixedPrice,
+        displayTotalFormatted: `${fixedPrice.toLocaleString('ru-RU')} ₽`,
+      };
+    }
+
     // Фотографии (добровольное прикрепление до 3 шт)
     const safePhotos: OrderPhoto[] = Array.isArray(photos) ? photos : [];
 
@@ -148,10 +202,12 @@ export async function POST(req: NextRequest) {
       data: {
         token,
         idempotencyKey: idempotencyKey || null,
-        status: 'new',
+        status: isAdminCreated ? 'agreed' : 'new',
+        source: source ? String(source) : (isAdminCreated ? 'phone_admin' : 'direct'),
         clientName: String(clientName).trim(),
         clientPhone: String(clientPhone).trim(),
         carBrandModel: effectiveCarBrandModel,
+        carLicensePlate: carLicensePlate ? String(carLicensePlate).trim().toUpperCase() : null,
         carClass: String(effectiveCarClass),
         isDirty: Boolean(isDirty),
         serviceFormat: format,
@@ -174,7 +230,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Синхронизация с системой бронирования слотов
+    // Синхронизация с системой бронирования слотов и боксов
     if (desiredDate && desiredTime) {
       try {
         const demoUser = await prisma.user.findFirst({
@@ -183,30 +239,48 @@ export async function POST(req: NextRequest) {
         });
 
         if (demoUser && demoUser.services.length > 0) {
-          const serviceToLink = demoUser.services[0];
-          // Расчет времени начала и конца
+          // Интеллектуальное сопоставление услуги из заказа с услугой в расписании (бокс, длительность)
+          const primaryCartItem = verifiedItems[0];
+          const matchedService = resolveBookingService(demoUser.services, primaryCartItem?.serviceId || primaryCartItem?.name) || demoUser.services[0];
+
           const [startHour, startMin] = desiredTime.split(':').map(Number);
           const [year, month, day] = desiredDate.split('-').map(Number);
-          const startAt = new Date(Date.UTC(year, month - 1, day, startHour - 3, startMin, 0)); // Moscow UTC+3
-          const endAt = new Date(startAt.getTime() + (serviceToLink.durationMinutes + serviceToLink.bufferMinutes) * 60000);
+          const startDate = new Date(year, month - 1, day, startHour, startMin, 0);
 
-          await prisma.booking.create({
-            data: {
-              userId: demoUser.id,
-              serviceId: serviceToLink.id,
-              clientName: String(clientName).trim(),
-              clientPhone: String(clientPhone).trim(),
-              startAt,
-              endAt,
-              status: 'confirmed',
-              notes: `Заявка с сайта #${newOrder.id.slice(-6)}. Формат: ${format === 'mobile' ? 'Выезд' : 'Студия'}. Авто: ${effectiveCarBrandModel}`,
-            },
+          await createBookingWithTransaction({
+            userIdOrSlug: demoUser.id,
+            serviceId: matchedService.id,
+            clientName: String(clientName).trim(),
+            clientPhone: String(clientPhone).trim(),
+            startAt: startDate.toISOString(),
+            carClass: String(effectiveCarClass),
+            workbayId: workbayId ? String(workbayId) : undefined,
+            notes: `Заказ #${newOrder.id.slice(-6)} • ${effectiveCarBrandModel} • ${format === 'mobile' ? 'Выезд' : 'В студии'}`,
+            orderId: newOrder.id,
           });
         }
       } catch (bookingErr) {
         console.warn('Non-blocking booking sync note:', bookingErr);
       }
     }
+
+    // Отправка Telegram уведомления (асинхронно, не блокируя ответ клиенту)
+    const host = req.headers.get('host') || 'localhost:3000';
+    const proto = req.headers.get('x-forwarded-proto') || 'http';
+    notifyNewOrder({
+      id: newOrder.id,
+      token: newOrder.token,
+      clientName: newOrder.clientName,
+      clientPhone: newOrder.clientPhone,
+      carBrandModel: newOrder.carBrandModel,
+      carClass: newOrder.carClass,
+      preliminaryTotal: newOrder.preliminaryTotal,
+      desiredDate: newOrder.desiredDate,
+      desiredTime: newOrder.desiredTime,
+      serviceFormat: newOrder.serviceFormat,
+      deliveryAddress: newOrder.deliveryAddress,
+      items: verifiedItems,
+    }, `${proto}://${host}`).catch((e) => console.warn('Telegram notify error:', e));
 
     return NextResponse.json({
       success: true,

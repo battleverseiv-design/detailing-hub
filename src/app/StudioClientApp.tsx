@@ -8,6 +8,8 @@ import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { CartDrawer } from '@/components/cart/CartDrawer';
 import { CheckoutRequestView } from '@/components/order/CheckoutRequestView';
+import { BeforeAfterSlider } from '@/components/BeforeAfterSlider';
+import { DEFAULT_BRAND_CONFIG } from '@/config/brand.config';
 import { 
   initTelegramApp, 
   triggerHaptic, 
@@ -15,7 +17,6 @@ import {
   hideTelegramBackButton 
 } from '@/lib/telegram';
 import { 
-  Sparkles, 
   ShieldCheck, 
   Clock, 
   MapPin, 
@@ -50,6 +51,13 @@ export function StudioClientApp({ settings }: StudioClientAppProps) {
 
   const [activeCategory, setActiveCategory] = useState<string>('packages');
   const router = useRouter();
+
+  // До и После слайдер
+  const beforeAfterList = (settings.beforeAfterItems && settings.beforeAfterItems.length > 0)
+    ? settings.beforeAfterItems
+    : (DEFAULT_BRAND_CONFIG.beforeAfterItems || []);
+  const [activeBeforeAfterId, setActiveBeforeAfterId] = useState<string>(beforeAfterList[0]?.id || 'body_polishing');
+  const currentBeforeAfter = beforeAfterList.find((i) => i.id === activeBeforeAfterId) || beforeAfterList[0];
   const [currentView, setCurrentView] = useState<'catalog' | 'request'>('catalog');
   const [seatQuantity, setSeatQuantity] = useState(2);
 
@@ -259,6 +267,13 @@ export function StudioClientApp({ settings }: StudioClientAppProps) {
     ];
   }, [settings.categories]);
 
+  // Если текущая выбранная категория была удалена, переключаемся на первую доступную
+  useEffect(() => {
+    if (categoriesList.length > 0 && !categoriesList.some((c) => c.id === activeCategory)) {
+      setActiveCategory(categoriesList[0].id);
+    }
+  }, [categoriesList, activeCategory]);
+
   // Услуги для текущей выбранной вкладки, отсортированные по сохранённому order
   const activeCategoryServices = useMemo(() => {
     return settings.tariffs
@@ -375,33 +390,39 @@ export function StudioClientApp({ settings }: StudioClientAppProps) {
                       setCarClass(c.id as CarClass);
                       triggerHaptic('selection');
                     }}
-                    className={`p-3.5 sm:p-4 rounded-2xl text-left apple-btn flex flex-col justify-between transition-all group relative overflow-hidden ${
+                    className={`p-3.5 sm:p-4 rounded-2xl text-left apple-btn flex flex-col justify-between transition-all duration-300 group relative overflow-hidden ${
                       isSelected
-                        ? 'bg-[#1e2333] text-white border-2 border-sky-400 shadow-xl shadow-sky-500/10 ring-1 ring-sky-400/40'
-                        : 'bg-[#10131c] hover:bg-[#161a26] text-zinc-300 border border-zinc-700/70 hover:border-zinc-600'
+                        ? 'bg-[#181b24] text-white border border-white/30 shadow-xl shadow-black/40 ring-1 ring-white/15'
+                        : 'bg-[#0f1118]/80 hover:bg-[#141722] text-zinc-300 border border-white/[0.08] hover:border-white/[0.15]'
                     }`}
                   >
                     {/* Заголовок и бейдж класса */}
                     <div className="flex items-center justify-between gap-1 mb-1">
                       <span className="font-semibold text-xs sm:text-sm tracking-tight text-white">{c.title}</span>
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
                         isSelected
-                          ? 'border-sky-400/40 text-sky-200 bg-sky-500/20'
-                          : 'border-zinc-700 text-zinc-400 bg-zinc-800/50'
+                          ? 'border-white/20 text-white bg-white/10'
+                          : 'border-white/[0.08] text-zinc-400 bg-white/[0.03]'
                       }`}>
                         {c.id === 'OTHER' ? 'Индив.' : `Класс ${c.id}`}
                       </span>
                     </div>
 
-                    {/* КРУПНЫЙ СИЛУЭТ АВТОМОБИЛЯ ПО ЦЕНТРУ */}
-                    <div className="my-2 sm:my-3 py-1 flex items-center justify-center h-16 sm:h-20 w-full">
+                    {/* СИЛУЭТ АВТОМОБИЛЯ СО СГЛАЖИВАНИЕМ И АППАРАТНЫМ УСКОРЕНИЕМ */}
+                    <div className="my-2 sm:my-3 py-1 flex items-center justify-center h-16 sm:h-20 w-full overflow-hidden">
                       <img
                         src={c.image}
                         alt={c.title}
-                        className={`h-full w-auto max-w-full object-contain transition-all duration-300 ${
+                        style={{
+                          transform: 'translateZ(0)',
+                          backfaceVisibility: 'hidden',
+                          WebkitBackfaceVisibility: 'hidden',
+                          imageRendering: 'auto',
+                        }}
+                        className={`h-full w-auto max-w-full object-contain transform-gpu transition-all duration-300 ease-out will-change-transform ${
                           isSelected
-                            ? 'opacity-100 scale-105 drop-shadow-[0_0_14px_rgba(255,255,255,0.35)]'
-                            : 'opacity-40 group-hover:opacity-75 group-hover:scale-102'
+                            ? 'opacity-100 scale-105 drop-shadow-[0_0_12px_rgba(255,255,255,0.3)]'
+                            : 'opacity-40 group-hover:opacity-75 group-hover:scale-[1.02]'
                         }`}
                       />
                     </div>
@@ -485,7 +506,7 @@ export function StudioClientApp({ settings }: StudioClientAppProps) {
 
         {/* НАВИГАЦИЯ ПО КАТЕГОРИЯМ (ДИНАМИЧЕСКИЕ ВКЛАДКИ ИЗ НАСТРОЕК) */}
         <section className="space-y-3">
-          <div className="grid grid-cols-3 p-1 rounded-2xl bg-[#10131c] border border-zinc-700/70 shadow-inner">
+          <div className="flex flex-wrap gap-1.5 p-1 rounded-2xl bg-[#10131c] border border-zinc-700/70 shadow-inner">
             {categoriesList.map((tab) => {
               const isActive = activeCategory === tab.id;
               return (
@@ -495,7 +516,7 @@ export function StudioClientApp({ settings }: StudioClientAppProps) {
                     setActiveCategory(tab.id);
                     triggerHaptic('selection');
                   }}
-                  className={`py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all text-center apple-btn ${
+                  className={`flex-1 min-w-[100px] py-2 sm:py-2.5 px-3 rounded-xl text-xs sm:text-sm font-medium transition-all text-center apple-btn ${
                     isActive
                       ? 'bg-[#1e2436] text-white shadow-md font-semibold border border-zinc-600/80'
                       : 'text-zinc-400 hover:text-white'
@@ -515,7 +536,9 @@ export function StudioClientApp({ settings }: StudioClientAppProps) {
                 ? 'Комплексы — пакеты «все включено» со скидкой до 25%. Поглощают входящие локальные зоны без переплаты.'
                 : activeCategory === 'interior'
                 ? 'Химчистка — экстракторная чистка сидений, потолка, багажника и уход за кожей.'
-                : 'Кузов и защита — зеркальная полировка, керамика 9H, антидождь и воск.'}
+                : activeCategory === 'exterior'
+                ? 'Кузов и защита — зеркальная полировка, керамика 9H, антидождь и воск.'
+                : `Категория «${categoriesList.find((c) => c.id === activeCategory)?.name || 'Услуги'}» — выберите подходящие работы`}
             </span>
           </div>
 
@@ -674,25 +697,52 @@ export function StudioClientApp({ settings }: StudioClientAppProps) {
             </div>
         </section>
 
-        {/* ФАКТОРЫ ДОВЕРИЯ (ПОДВАЛЬНЫЕ ПЛАШКИ) */}
-        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-zinc-800/80 text-xs text-zinc-400">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-zinc-400 shrink-0" />
-            <span>Немецкая химия Koch Chemie</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-zinc-400 shrink-0" />
-            <span>Сушка турбо-пушкой</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Award className="w-4 h-4 text-zinc-400 shrink-0" />
-            <span>Без запаха и разводов</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <ThumbsUp className="w-4 h-4 text-zinc-400 shrink-0" />
-            <span>Оплата после приёмки</span>
-          </div>
-        </section>
+        {/* ИНТЕРАКТИВНЫЙ СЛАЙДЕР «ДО И ПОСЛЕ» */}
+        {currentBeforeAfter && (
+          <section className="space-y-4 pt-6 border-t border-zinc-800/80">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                Результаты работы
+              </span>
+
+              {/* Переключатель примеров (Apple Segmented Control) */}
+              {beforeAfterList.length > 1 && (
+                <div className="flex p-1 rounded-xl bg-zinc-900/90 border border-white/[0.08] backdrop-blur-md gap-1">
+                  {beforeAfterList.map((item) => {
+                    const isActive = currentBeforeAfter.id === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveBeforeAfterId(item.id);
+                          triggerHaptic('selection');
+                        }}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                          isActive
+                            ? 'bg-zinc-800 text-white shadow-sm border border-white/10'
+                            : 'text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        {item.title.split(' ')[0]}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <BeforeAfterSlider
+              beforeImage={currentBeforeAfter.beforeImage}
+              afterImage={currentBeforeAfter.afterImage}
+              beforeLabel={currentBeforeAfter.beforeLabel || 'До работы'}
+              afterLabel={currentBeforeAfter.afterLabel || 'После детейлинга'}
+              title={currentBeforeAfter.title}
+              description={currentBeforeAfter.description}
+            />
+          </section>
+        )}
+
       </main>
 
       {/* ПЛАВАЮЩИЙ STICKY ACTION BAR С ПОДДЕРЖКОЙ SAFE-AREA ДЛЯ СМАРТФОНОВ */}
@@ -748,6 +798,7 @@ export function StudioClientApp({ settings }: StudioClientAppProps) {
         onUndoRemove={handleUndoRemove}
         lastDeletedItem={lastDeletedItem}
         onOpenOrderModal={handleOpenRequest}
+        onAddService={handleToggleService}
       />
 
       <Footer settings={settings} />

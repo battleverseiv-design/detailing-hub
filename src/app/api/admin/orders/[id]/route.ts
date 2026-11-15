@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { deletePhotoFile } from '@/lib/storage';
+import { notifyOrderStatusChanged } from '@/lib/telegram';
 import { OrderPhoto } from '@/types';
 
 export async function GET(
@@ -23,7 +24,9 @@ export async function GET(
     ...order,
     items: JSON.parse(order.itemsJson || '[]'),
     photos: JSON.parse(order.photosJson || '[]'),
-    tariffsSnapshot: JSON.parse(order.tariffsSnapshotJson || '{}'),
+    damages: JSON.parse(order.damagesJson || '[]'),
+    inspectionPhotosBefore: JSON.parse(order.inspectionPhotosBeforeJson || '[]'),
+    inspectionPhotosAfter: JSON.parse(order.inspectionPhotosAfterJson || '[]'),
   });
 }
 
@@ -38,7 +41,39 @@ export async function PUT(
 
   const { id } = await params;
   const body = await req.json();
-  const { status, agreedFinalPrice, agreedEntryDateTime, privateStudioNote } = body;
+
+  const {
+    status,
+    agreedFinalPrice,
+    agreedEntryDateTime,
+    privateStudioNote,
+
+    // Цифровой акт
+    carVin,
+    carLicensePlate,
+    mileage,
+    fuelLevel,
+    damages,
+    damagesJson,
+    inspectionPhotosBefore,
+    inspectionPhotosBeforeJson,
+    inspectionPhotosAfter,
+    inspectionPhotosAfterJson,
+    clientSignatureUrl,
+    masterSignatureUrl,
+    actCompletedAt,
+
+    // P&L и оплата
+    suppliesCostRub,
+    masterCommissionPct,
+    isPaid,
+    paymentMethod,
+  } = body;
+
+  const existingOrder = await prisma.order.findUnique({ where: { id } });
+  if (!existingOrder) {
+    return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 });
+  }
 
   // Если статус переводится в "agreed", проверяем обязательность согласованной цены и даты
   if (status === 'agreed') {
@@ -56,6 +91,17 @@ export async function PUT(
     }
   }
 
+  // Расчёт P&L финансовых показателей (себестоимость химии, доля мастера, чистая прибыль)
+  const finalPrice = agreedFinalPrice !== undefined ? Number(agreedFinalPrice) : (existingOrder.agreedFinalPrice ?? existingOrder.preliminaryTotal);
+  const supplies = suppliesCostRub !== undefined ? Number(suppliesCostRub) : (existingOrder.suppliesCostRub || Math.round(finalPrice * 0.15));
+  const commissionPct = masterCommissionPct !== undefined ? Number(masterCommissionPct) : (existingOrder.masterCommissionPct || 30);
+  const masterPayout = Math.max(0, Math.round(((finalPrice - supplies) * commissionPct) / 100));
+  const netProfit = Math.round(finalPrice - supplies - masterPayout);
+
+  const isCancelling = status === 'cancelled' && existingOrder.status !== 'cancelled';
+  const cancelReason = body.cancelReason ? String(body.cancelReason).trim() : (isCancelling ? 'Отменено администратором студии' : undefined);
+  const cancelledBy = body.cancelledBy ? String(body.cancelledBy) : (isCancelling ? 'admin' : undefined);
+
   try {
     const updated = await prisma.order.update({
       where: { id },
@@ -64,8 +110,50 @@ export async function PUT(
         ...(agreedFinalPrice !== undefined ? { agreedFinalPrice: Number(agreedFinalPrice) } : {}),
         ...(agreedEntryDateTime !== undefined ? { agreedEntryDateTime: String(agreedEntryDateTime).trim() } : {}),
         ...(privateStudioNote !== undefined ? { privateStudioNote: String(privateStudioNote) } : {}),
+        ...(carVin !== undefined ? { carVin: String(carVin).trim() || null } : {}),
+        ...(carLicensePlate !== undefined ? { carLicensePlate: String(carLicensePlate).trim() || null } : {}),
+        ...(mileage !== undefined ? { mileage: mileage ? Number(mileage) : null } : {}),
+        ...(fuelLevel !== undefined ? { fuelLevel: fuelLevel != null ? Number(fuelLevel) : null } : {}),
+        ...(damages !== undefined ? { damagesJson: JSON.stringify(damages) } : damagesJson !== undefined ? { damagesJson } : {}),
+        ...(inspectionPhotosBefore !== undefined ? { inspectionPhotosBeforeJson: JSON.stringify(inspectionPhotosBefore) } : inspectionPhotosBeforeJson !== undefined ? { inspectionPhotosBeforeJson } : {}),
+        ...(inspectionPhotosAfter !== undefined ? { inspectionPhotosAfterJson: JSON.stringify(inspectionPhotosAfter) } : inspectionPhotosAfterJson !== undefined ? { inspectionPhotosAfterJson } : {}),
+        ...(clientSignatureUrl !== undefined ? { clientSignatureUrl } : {}),
+        ...(masterSignatureUrl !== undefined ? { masterSignatureUrl } : {}),
+        ...(actCompletedAt !== undefined ? { actCompletedAt: actCompletedAt ? new Date(actCompletedAt) : null } : {}),
+        suppliesCostRub: supplies,
+        masterCommissionPct: commissionPct,
+        masterPayoutRub: masterPayout,
+        netProfitRub: netProfit,
+        ...(isPaid !== undefined ? { isPaid: Boolean(isPaid) } : {}),
+        ...(paymentMethod !== undefined ? { paymentMethod: String(paymentMethod) } : {}),
+        ...(isCancelling ? { cancelledAt: new Date(), cancelledBy, cancelReason } : {}),
+        ...(cancelReason && !isCancelling ? { cancelReason } : {}),
       },
     });
+
+    if (isCancelling && existingOrder.bookingId) {
+      await prisma.booking.update({
+        where: { id: existingOrder.bookingId },
+        data: {
+          status: 'cancelled',
+          notes: `Отменено администратором: ${cancelReason}`,
+        },
+      }).catch((e) => console.warn('Could not update booking status on cancel:', e));
+    }
+
+    // Уведомление о смене статуса в Telegram (non-blocking)
+    if (status && status !== existingOrder.status) {
+      const host = req.headers.get('host') || 'localhost:3000';
+      const proto = req.headers.get('x-forwarded-proto') || 'http';
+      notifyOrderStatusChanged({
+        token: updated.token,
+        clientName: updated.clientName,
+        carBrandModel: updated.carBrandModel,
+        status: updated.status,
+        agreedEntryDateTime: updated.agreedEntryDateTime,
+        agreedFinalPrice: updated.agreedFinalPrice,
+      }, `${proto}://${host}`).catch((e) => console.warn('Telegram status notification note:', e));
+    }
 
     return NextResponse.json({
       success: true,
@@ -73,6 +161,9 @@ export async function PUT(
         ...updated,
         items: JSON.parse(updated.itemsJson || '[]'),
         photos: JSON.parse(updated.photosJson || '[]'),
+        damages: JSON.parse(updated.damagesJson || '[]'),
+        inspectionPhotosBefore: JSON.parse(updated.inspectionPhotosBeforeJson || '[]'),
+        inspectionPhotosAfter: JSON.parse(updated.inspectionPhotosAfterJson || '[]'),
       },
     });
   } catch (err: any) {

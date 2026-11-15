@@ -26,8 +26,15 @@ yarn-error.log*
 .env*.local
 
 # SQLite database
-/prisma/*.db
+/prisma/*.db*
 /prisma/*.db-journal
+/prisma/*.db-shm
+/prisma/*.db-wal
+
+# Exports & archives
+all-code.txt
+*.zip
+*.tsbuildinfo
 
 # Uploads
 /uploads/*

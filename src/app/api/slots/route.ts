@@ -5,15 +5,12 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId') || searchParams.get('slug') || 'demo';
-    const serviceId = searchParams.get('serviceId');
+    const serviceId = searchParams.get('serviceId') || undefined;
+    const serviceIdsParam = searchParams.get('serviceIds');
+    const serviceIds = serviceIdsParam ? serviceIdsParam.split(',').filter(Boolean) : undefined;
     const date = searchParams.get('date');
-
-    if (!serviceId) {
-      return NextResponse.json(
-        { error: 'Параметр serviceId обязателен' },
-        { status: 400 }
-      );
-    }
+    const carClass = searchParams.get('carClass') || 'M';
+    const workbayId = searchParams.get('workbayId') || undefined;
 
     if (!date) {
       return NextResponse.json(
@@ -25,7 +22,10 @@ export async function GET(req: NextRequest) {
     const result = await getAvailableSlots({
       userIdOrSlug: userId,
       serviceId,
+      serviceIds,
       dateStr: date,
+      carClass,
+      workbayId,
     });
 
     return NextResponse.json(result);

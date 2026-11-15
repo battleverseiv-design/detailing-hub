@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAdminSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
 async function getDemoUser(userIdOrSlug?: string) {
@@ -33,11 +34,17 @@ async function getDemoUser(userIdOrSlug?: string) {
 }
 
 export async function GET(req: NextRequest) {
+  const isAuth = await verifyAdminSession();
+  if (!isAuth) {
+    return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId') || 'demo';
 
     const user = await getDemoUser(userId);
+    const workbays = await prisma.workbay.findMany({ orderBy: { order: 'asc' } });
 
     return NextResponse.json({
       success: true,
@@ -50,6 +57,7 @@ export async function GET(req: NextRequest) {
       services: user.services,
       availability: user.availabilities,
       overrides: user.dateOverrides,
+      workbays,
     });
   } catch (error: any) {
     console.error('Error fetching booking settings:', error);
@@ -58,16 +66,40 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const isAuth = await verifyAdminSession();
+  if (!isAuth) {
+    return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
+  }
+
   try {
     const body = await req.json();
     const { action, userId, data } = body;
     const user = await getDemoUser(userId);
 
     if (action === 'save_service') {
-      const { id, title, description, durationMinutes, bufferMinutes, price, isActive } = data;
+      const {
+        id,
+        title,
+        description,
+        durationMinutes,
+        activeDurationMinutes,
+        cureDurationMinutes,
+        bufferMinutes,
+        price,
+        requiredBayType,
+        requiredServiceIdsJson,
+        classMultipliersJson,
+        isActive,
+      } = data;
+
       if (!title || !durationMinutes || price === undefined) {
         return NextResponse.json({ error: 'Заполните название, длительность и цену' }, { status: 400 });
       }
+
+      const activeMin = Number(activeDurationMinutes ?? durationMinutes);
+      const cureMin = Number(cureDurationMinutes ?? 0);
+      const bufMin = Number(bufferMinutes ?? 15);
+      const totalMin = activeMin + cureMin + bufMin;
 
       if (id) {
         const updated = await prisma.service.update({
@@ -75,9 +107,14 @@ export async function POST(req: NextRequest) {
           data: {
             title,
             description: description || null,
-            durationMinutes: Number(durationMinutes),
-            bufferMinutes: Number(bufferMinutes || 0),
+            durationMinutes: totalMin,
+            activeDurationMinutes: activeMin,
+            cureDurationMinutes: cureMin,
+            bufferMinutes: bufMin,
             price: Number(price),
+            requiredBayType: requiredBayType || 'any',
+            requiredServiceIdsJson: typeof requiredServiceIdsJson === 'string' ? requiredServiceIdsJson : JSON.stringify(requiredServiceIdsJson || []),
+            classMultipliersJson: typeof classMultipliersJson === 'string' ? classMultipliersJson : JSON.stringify(classMultipliersJson || { S: 1.0, M: 1.25, L: 1.5 }),
             isActive: Boolean(isActive ?? true),
           },
         });
@@ -88,14 +125,56 @@ export async function POST(req: NextRequest) {
             userId: user.id,
             title,
             description: description || null,
-            durationMinutes: Number(durationMinutes),
-            bufferMinutes: Number(bufferMinutes || 0),
+            durationMinutes: totalMin,
+            activeDurationMinutes: activeMin,
+            cureDurationMinutes: cureMin,
+            bufferMinutes: bufMin,
             price: Number(price),
+            requiredBayType: requiredBayType || 'any',
+            requiredServiceIdsJson: typeof requiredServiceIdsJson === 'string' ? requiredServiceIdsJson : JSON.stringify(requiredServiceIdsJson || []),
+            classMultipliersJson: typeof classMultipliersJson === 'string' ? classMultipliersJson : JSON.stringify(classMultipliersJson || { S: 1.0, M: 1.25, L: 1.5 }),
             isActive: Boolean(isActive ?? true),
           },
         });
         return NextResponse.json({ success: true, service: created });
       }
+    }
+
+    if (action === 'save_workbay') {
+      const { id, name, type, description, isActive, order } = data;
+      if (!name) return NextResponse.json({ error: 'Укажите название бокса/поста' }, { status: 400 });
+
+      if (id) {
+        const updated = await prisma.workbay.update({
+          where: { id },
+          data: {
+            name,
+            type: type || 'universal',
+            description: description || null,
+            isActive: Boolean(isActive ?? true),
+            order: Number(order || 0),
+          },
+        });
+        return NextResponse.json({ success: true, workbay: updated });
+      } else {
+        const created = await prisma.workbay.create({
+          data: {
+            name,
+            type: type || 'universal',
+            description: description || null,
+            isActive: Boolean(isActive ?? true),
+            order: Number(order || 0),
+          },
+        });
+        return NextResponse.json({ success: true, workbay: created });
+      }
+    }
+
+    if (action === 'delete_workbay') {
+      const { id } = data;
+      if (!id) return NextResponse.json({ error: 'Не указан ID бокса' }, { status: 400 });
+      await prisma.workbay.delete({ where: { id } });
+      return NextResponse.json({ success: true, deletedId: id });
     }
 
     if (action === 'delete_service') {

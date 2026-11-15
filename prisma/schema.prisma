@@ -8,18 +8,44 @@ generator client {
   binaryTargets = ["native", "rhel-openssl-1.0.x", "rhel-openssl-3.0.x", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]
 }
 
+// -----------------------------------------------------------
+// ПОСТЫ И БОКСЫ ДЕТЕЙЛИНГ-СТУДИИ (WORKBAYS)
+// -----------------------------------------------------------
+
+model Workbay {
+  id          String    @id @default(uuid())
+  name        String    // «Бокс №1 (Мокрый / Экстракция)», «Бокс №2 (Сухой / Полировка)»
+  type        String    @default("universal") // wet, dry, cure, universal
+  description String?
+  isActive    Boolean   @default(true)
+  order       Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  bookings    Booking[]
+
+  @@index([isActive, order])
+}
+
+// -----------------------------------------------------------
+// ЗАКАЗЫ ДЕТЕЙЛИНГА, ЦИФРОВОЙ АКТ И ФИНАНСЫ (P&L)
+// -----------------------------------------------------------
+
 model Order {
   id                  String   @id @default(uuid())
   token               String   @unique
   idempotencyKey      String?  @unique
-  status              String   @default("new") // new, agreed, completed, cancelled
+  status              String   @default("new") // new, agreed, in_progress, ready, completed, cancelled
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
   // Клиент и авто
   clientName          String
   clientPhone         String
+  clientEmail         String?
   carBrandModel       String
+  carVin              String?  // VIN для автоопределения класса и истории
+  carLicensePlate     String?  // Госномер
   carClass            String   // S, M, L, OTHER
   isDirty             Boolean  @default(false)
 
@@ -27,10 +53,14 @@ model Order {
   serviceFormat       String   @default("studio") // studio, mobile
   deliveryAddress     String?
 
-  // Время записи
+  // Дата и привязка к расписанию боксов
   desiredDate         String?
   desiredTime         String?
   agreedEntryDateTime String?
+  
+  // Связь с бронированием бокса (1:1)
+  bookingId           String?  @unique
+  booking             Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
 
   // Расчёт стоимости
   knownSubtotal       Float
@@ -39,50 +69,50 @@ model Order {
   agreedFinalPrice    Float?
   hasPhotoAppraisal   Boolean  @default(false)
 
-  // Заметки и состав
+  // Финансовая аналитика владельца (P&L) и оплата
+  suppliesCostRub     Float    @default(0)   // Себестоимость израсходованной автохимии
+  masterCommissionPct Float    @default(30)  // Процент мастера от работы (%)
+  masterPayoutRub     Float    @default(0)   // Начисленная зарплата мастера
+  netProfitRub        Float    @default(0)   // Чистая прибыль студии с заказа
+  isPaid              Boolean  @default(false) // Оплачен ли заказ клиентом по факту
+  paymentMethod       String   @default("cash") // cash (Наличные), card (Карта/Терминал), sbp (Перевод СБП)
+
+  // Цифровой акт осмотра и приёмки автомобиля
+  mileage             Int?     // Пробег авто при сдаче в бокс
+  fuelLevel           Int?     // Уровень топлива (0-100%)
+  damagesJson         String   @default("[]") // Массив зафиксированных сколов/царапин по зонам кузова
+  inspectionPhotosBeforeJson String @default("[]") // Фото «До» с привязкой к зонам
+  inspectionPhotosAfterJson  String @default("[]") // Фото «После» (результат детейлинга)
+  clientSignatureUrl  String?  // Подпись клиента на приемке
+  masterSignatureUrl  String?  // Подпись мастера-приемщика
+  actCompletedAt      DateTime?
+
+  // Состав заказа и заметки
   clientComment       String?
   privateStudioNote   String?
+  source              String?  // Источник заявки: yandex, vk, 2gis, direct, phone_admin
   itemsJson           String   // JSON-массив CartItem[]
-  photosJson          String   @default("[]") // JSON-массив OrderPhoto[]
-  tariffsSnapshotJson String   // Слепок тарифов на момент заказа
+  photosJson          String   @default("[]") // Загруженные клиентом фото при создании заявки
+  tariffsSnapshotJson String   // Слепок тарифов на момент оформления
 
-  // 2D мини-игра
-  miniGamePlayed      Boolean  @default(false)
-  miniGameBonusCode   String?
+  // Аудит и контроль отмены заказа
+  cancelledAt         DateTime? // Время отмены
+  cancelledBy         String?   // client | admin | system_no_show
+  cancelReason        String?   // Причина отмены или заметка к отмене
 
   @@index([token])
   @@index([status])
   @@index([createdAt])
-}
-
-model StudioConfig {
-  id           String   @id @default("default")
-  updatedAt    DateTime @updatedAt
-  settingsJson String   // JSON со всеми настройками бренда, тарифов, игры и подсказок
-}
-
-model AdminAccount {
-  id           String   @id @default("admin")
-  passwordHash String
-  updatedAt    DateTime @updatedAt
-}
-
-model AdminSession {
-  id        String   @id @default(uuid())
-  token     String   @unique
-  createdAt DateTime @default(now())
-  expiresAt DateTime
-
-  @@index([token])
+  @@index([carVin])
 }
 
 // -----------------------------------------------------------
-// МОДУЛЬ ОНЛАЙН-ЗАПИСИ (МУЛЬТИТЕНАНТНОСТЬ)
+// ОНЛАЙН-ЗАПИСЬ, ГРАФИКИ И СЛОТЫ
 // -----------------------------------------------------------
 
 model User {
   id             String          @id @default(uuid())
-  slug           String          @unique // Публичный URL: /book/[slug] или ?userId=...
+  slug           String          @unique // Публичный URL: /book/[slug]
   name           String                  // Имя мастера или студии
   email          String          @unique
   phone          String?
@@ -99,21 +129,33 @@ model User {
 }
 
 model Service {
-  id              String    @id @default(uuid())
-  userId          String
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                    String    @id @default(uuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  title           String    // Название услуги
-  description     String?   // Описание
-  durationMinutes Int       // Длительность в минутах (например, 60, 120)
-  bufferMinutes   Int       @default(15) // Перерыв после услуги
-  price           Float     // Стоимость
-  isActive        Boolean   @default(true)
+  title                 String    // Название услуги
+  description           String?
   
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  // Фазы выполнения в детейлинге:
+  durationMinutes       Int       // Общее время цикла
+  activeDurationMinutes Int       @default(60) // Время непосредственной работы мастера
+  cureDurationMinutes   Int       @default(0)  // Время кристаллизации/сушки (бокс занят, мастер свободен)
+  bufferMinutes         Int       @default(15) // Буфер на приемку/выдачу и проветривание
+  
+  price                 Float     // Базовая стоимость (Класс S)
+  requiredBayType       String    @default("any") // wet, dry, cure, any
+  
+  // Технологические зависимости (например, Керамика требует предварительной полировки)
+  requiredServiceIdsJson String   @default("[]") // Массив id обязательных услуг
+  
+  // Матрица цен и длительности по классам авто
+  classMultipliersJson  String    @default("{\"S\":1.0,\"M\":1.25,\"L\":1.5}")
+  
+  isActive              Boolean   @default(true)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  bookings        Booking[]
+  bookings              Booking[]
 
   @@index([userId, isActive])
 }
@@ -153,27 +195,69 @@ model DateOverride {
 }
 
 model Booking {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String    @id @default(uuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  serviceId   String
-  service     Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  serviceId           String
+  service             Service   @relation(fields: [serviceId], references: [id], onDelete: Restrict)
 
-  clientName  String
-  clientPhone String
-  clientEmail String?
+  // Привязка к физическому боксу студии
+  workbayId           String?
+  workbay             Workbay?  @relation(fields: [workbayId], references: [id], onDelete: SetNull)
 
-  startAt     DateTime // UTC timestamp
-  endAt       DateTime // UTC timestamp (startAt + duration + buffer)
+  // Связь с заказом детейлинга
+  order               Order?
 
-  status      String   @default("confirmed") // "pending", "confirmed", "cancelled"
-  notes       String?
+  clientName          String
+  clientPhone         String
+  clientEmail         String?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // Полный временной интервал бронирования
+  startAt             DateTime  // Начало работ
+  endAt               DateTime  // Окончание всех фаз (включая сушку и буфер)
+
+  // Фазовое расписание
+  activeWorkEndAt     DateTime? // Окончание работы мастера (мастер освобождается для другого авто)
+  cureEndAt           DateTime? // Окончание сушки (освобождается бокс)
+  isMultiDay          Boolean   @default(false) // Переходит ли на следующий рабочий день
+
+  status              String    @default("confirmed") // pending, confirmed, in_progress, completed, cancelled
+  notes               String?
+  
+  // Внешняя синхронизация
+  googleCalendarEventId String?
+
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([userId, startAt])
   @@index([userId, status])
+  @@index([workbayId, startAt, endAt])
   @@index([serviceId])
+}
+
+// -----------------------------------------------------------
+// НАСТРОЙКИ СТУДИИ И БЕЗОПАСНОСТЬ
+// -----------------------------------------------------------
+
+model StudioConfig {
+  id           String   @id @default("default")
+  updatedAt    DateTime @updatedAt
+  settingsJson String   // JSON настроек бренда, контактов, тарифов, Telegram и множителей
+}
+
+model AdminAccount {
+  id           String   @id @default("admin")
+  passwordHash String
+  updatedAt    DateTime @updatedAt
+}
+
+model AdminSession {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([token])
 }

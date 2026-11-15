@@ -23,8 +23,8 @@ export function Header({ settings, cartCount = 0, cartTotalFormatted = '0 ₽', 
         {/* Логотип и название студии */}
         <Link href="/" className="flex flex-col group py-0.5">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-lg sm:text-xl tracking-tight text-zinc-900 dark:text-white leading-none">
-              Detailing<span className="text-sky-500 font-extrabold">Hub</span>
+            <span className="font-semibold text-lg sm:text-xl tracking-wide text-zinc-900 dark:text-white leading-none">
+              DetailingHub
             </span>
           </div>
           <p className="text-[11px] text-zinc-500 hidden sm:block mt-1">
@@ -42,14 +42,14 @@ export function Header({ settings, cartCount = 0, cartTotalFormatted = '0 ₽', 
             <span>{settings.phone}</span>
           </a>
 
-          <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800" />
+          <div className="h-4 w-px bg-zinc-200 dark:border-zinc-800" />
 
           <a
             href={settings.telegramUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 rounded-lg text-zinc-500 hover:text-sky-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-all"
-            title="Telegram (Демо)"
+            title="Telegram"
           >
             <Send className="w-4 h-4" />
           </a>
@@ -59,7 +59,7 @@ export function Header({ settings, cartCount = 0, cartTotalFormatted = '0 ₽', 
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 rounded-lg text-zinc-500 hover:text-emerald-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-all"
-            title="WhatsApp (Демо)"
+            title="WhatsApp"
           >
             <MessageSquare className="w-4 h-4" />
           </a>
@@ -69,6 +69,7 @@ export function Header({ settings, cartCount = 0, cartTotalFormatted = '0 ₽', 
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Переключатель темы */}
           <button
+            type="button"
             onClick={toggleTheme}
             className="p-2 rounded-xl text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 transition-all"
             title={theme === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему'}
@@ -85,29 +86,22 @@ export function Header({ settings, cartCount = 0, cartTotalFormatted = '0 ₽', 
           </Link>
 
           {/* Кнопка Корзины */}
-          {onOpenCart ? (
+          {onOpenCart && (
             <button
+              type="button"
               onClick={onOpenCart}
-              className="relative flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white border border-zinc-800 font-medium text-xs sm:text-sm transition-all"
+              className="relative flex items-center gap-2 px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs shadow-md shadow-sky-600/20 active:scale-95 transition-all"
             >
-              <ShoppingBag className="w-4 h-4 text-zinc-300" />
-              <span className="hidden sm:inline tabular-nums">{cartCount > 0 ? cartTotalFormatted : 'Корзина'}</span>
+              <ShoppingBag className="w-4 h-4" />
+              <span className="hidden sm:inline">{cartTotalFormatted}</span>
               {cartCount > 0 && (
-                <span className="px-1.5 py-0.5 min-w-[20px] text-center rounded-full bg-white text-zinc-950 font-bold text-[11px] tabular-nums">
+                <span className="px-1.5 py-0.5 rounded-full bg-white text-sky-600 text-[10px] font-black">
                   {cartCount}
                 </span>
               )}
             </button>
-          ) : (
-            <Link
-              href="/"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 font-medium text-xs transition-colors"
-            >
-              <span>Калькулятор</span>
-            </Link>
           )}
         </div>
-
       </div>
     </header>
   );

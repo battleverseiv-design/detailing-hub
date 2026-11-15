@@ -29,6 +29,11 @@ export async function GET(req: NextRequest) {
 
     const orders = await prisma.order.findMany({
       where,
+      include: {
+        booking: {
+          include: { workbay: true },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -37,6 +42,9 @@ export async function GET(req: NextRequest) {
       items: JSON.parse(o.itemsJson || '[]'),
       photos: JSON.parse(o.photosJson || '[]'),
       tariffsSnapshot: JSON.parse(o.tariffsSnapshotJson || '{}'),
+      damages: JSON.parse(o.damagesJson || '[]'),
+      inspectionPhotosBefore: JSON.parse(o.inspectionPhotosBeforeJson || '[]'),
+      inspectionPhotosAfter: JSON.parse(o.inspectionPhotosAfterJson || '[]'),
     }));
 
     return NextResponse.json(parsedOrders);

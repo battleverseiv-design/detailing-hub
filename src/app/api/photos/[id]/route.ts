@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs/promises';
+import path from 'path';
 import { getPhotoBuffer } from '@/lib/storage';
 import { verifyAdminSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
+const ONE_HOUR_MS = 60 * 60 * 1000;
 
 export async function GET(
   req: NextRequest,
@@ -9,29 +14,72 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    if (!id) {
+    if (!id || typeof id !== 'string') {
       return new NextResponse('Bad request', { status: 400 });
     }
 
-    // Проверка прав доступа: либо авторизован админ, либо передан валидный токен заказа
+    // 1. Проверка прав: Авторизован ли администратор студии
     const isAdmin = await verifyAdminSession();
-    const token = req.nextUrl.searchParams.get('token');
-
     let isAuthorized = isAdmin;
 
+    // 2. Проверка прав: Передан ли токен существующего заказа
+    const token = req.nextUrl.searchParams.get('token');
     if (!isAuthorized && token) {
       const order = await prisma.order.findUnique({
         where: { token },
+        select: {
+          photosJson: true,
+          inspectionPhotosBeforeJson: true,
+          inspectionPhotosAfterJson: true,
+        },
       });
-      if (order && order.photosJson.includes(id)) {
-        isAuthorized = true;
+
+      if (order) {
+        const inOrderPhotos = order.photosJson?.includes(id);
+        const inBeforePhotos = order.inspectionPhotosBeforeJson?.includes(id);
+        const inAfterPhotos = order.inspectionPhotosAfterJson?.includes(id);
+
+        if (inOrderPhotos || inBeforePhotos || inAfterPhotos) {
+          isAuthorized = true;
+        }
       }
     }
 
-    // В превью модального окна до сохранения заказа разрешаем просмотр по прямому ID
-    if (!isAuthorized && !token) {
-      // Разрешено для локального превью клиента во время оформления
-      isAuthorized = true;
+    // 3. Проверка прав: Превью только что загруженного фото до создания заказа
+    // Разрешено только если файл существует, загружен менее 1 часа назад и еще не привязан ни к одному заказу
+    if (!isAuthorized) {
+      try {
+        const safeFilename = path.basename(`${id}.webp`);
+        const filePath = path.join(UPLOAD_DIR, safeFilename);
+        const stats = await fs.stat(filePath);
+        const fileAgeMs = Date.now() - stats.mtimeMs;
+
+        if (fileAgeMs <= ONE_HOUR_MS) {
+          // Проверяем, не принадлежит ли это фото уже какому-то оформленному заказу
+          const attachedOrder = await prisma.order.findFirst({
+            where: {
+              OR: [
+                { photosJson: { contains: id } },
+                { inspectionPhotosBeforeJson: { contains: id } },
+                { inspectionPhotosAfterJson: { contains: id } },
+              ],
+            },
+            select: { id: true },
+          });
+
+          // Если фото еще ни к какому заказу не привязано — это свежий аплоад клиента во время оформления
+          if (!attachedOrder) {
+            isAuthorized = true;
+          }
+        }
+      } catch {
+        // Файла нет на диске или ошибка fs.stat
+      }
+    }
+
+    // Если ни одно условие авторизации не выполнено — отклоняем запрос (403 Forbidden)
+    if (!isAuthorized) {
+      return new NextResponse('Access denied', { status: 403 });
     }
 
     const photo = await getPhotoBuffer(id);

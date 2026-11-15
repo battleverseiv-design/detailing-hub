@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { userId, slug, serviceId, clientName, clientPhone, clientEmail, startAt, notes } = body;
+    const { userId, slug, serviceId, clientName, clientPhone, clientEmail, startAt, notes, workbayId, carClass, orderId } = body;
 
     const targetUserId = userId || slug || 'demo';
 
@@ -33,6 +33,9 @@ export async function POST(req: NextRequest) {
       clientEmail,
       startAt,
       notes,
+      workbayId,
+      carClass,
+      orderId,
     });
 
     return NextResponse.json({
@@ -45,6 +48,11 @@ export async function POST(req: NextRequest) {
         durationMinutes: booking.service.durationMinutes,
         startAt: booking.startAt.toISOString(),
         endAt: booking.endAt.toISOString(),
+        activeWorkEndAt: booking.activeWorkEndAt?.toISOString(),
+        cureEndAt: booking.cureEndAt?.toISOString(),
+        isMultiDay: booking.isMultiDay,
+        workbayId: booking.workbayId,
+        workbayName: booking.workbay?.name,
         clientName: booking.clientName,
         clientPhone: booking.clientPhone,
         masterName: booking.user.name,

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
-import { CarClass, CartItem, PricingSummary, StudioSettings } from '@/types';
-import { ShoppingBag, X, Trash2, RotateCcw, ArrowRight, ShieldCheck, Truck, Home } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { CarClass, CartItem, PricingSummary, ServiceItem, StudioSettings } from '@/types';
+import { ShoppingBag, X, Trash2, RotateCcw, ArrowRight, ShieldCheck, Truck, Home, AlertTriangle, Sparkles, Plus } from 'lucide-react';
+import { validateServiceDependencies, getRecommendedUpsells } from '@/lib/pricing';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -19,6 +20,7 @@ interface CartDrawerProps {
   onUndoRemove?: () => void;
   lastDeletedItem: CartItem | null;
   onOpenOrderModal: () => void;
+  onAddService?: (service: ServiceItem) => void;
 }
 
 export function CartDrawer({
@@ -36,7 +38,16 @@ export function CartDrawer({
   onUndoRemove,
   lastDeletedItem,
   onOpenOrderModal,
+  onAddService,
 }: CartDrawerProps) {
+  const dependencyCheck = useMemo(() => {
+    return validateServiceDependencies(items, settings.tariffs);
+  }, [items, settings.tariffs]);
+
+  const upsellRecommendations = useMemo(() => {
+    return getRecommendedUpsells(items, settings.tariffs, carClass);
+  }, [items, settings.tariffs, carClass]);
+
   if (!isOpen) return null;
 
   return (
@@ -149,6 +160,85 @@ export function CartDrawer({
                   </div>
                 </div>
               ))
+            )}
+
+            {/* Предупреждение о технологических зависимостях */}
+            {dependencyCheck.warnings.length > 0 && (
+              <div className="space-y-2 mt-2">
+                {dependencyCheck.warnings.map((w, idx) => {
+                  const reqTariff = settings.tariffs.find((t) => t.id === w.requiredServiceId);
+                  return (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-200 space-y-1.5"
+                    >
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                        <span className="leading-snug">{w.message}</span>
+                      </div>
+                      {reqTariff && onAddService && (
+                        <button
+                          type="button"
+                          onClick={() => onAddService(reqTariff)}
+                          className="w-full mt-1 py-1.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold text-[11px] flex items-center justify-center gap-1.5 transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Добавить «{reqTariff.name}»</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Смарт-апсейлы / Рекомендации к заказу */}
+            {items.length > 0 && upsellRecommendations.length > 0 && onAddService && (
+              <div className="pt-3 border-t border-zinc-200/60 dark:border-zinc-800/60 space-y-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase tracking-wider">
+                  <Sparkles className="w-3.5 h-3.5 text-sky-500" />
+                  <span>Рекомендуем добавить к заказу:</span>
+                </div>
+                <div className="space-y-2">
+                  {upsellRecommendations.map((rec) => {
+                    const tariff = settings.tariffs.find((t) => t.id === rec.serviceId);
+                    if (!tariff) return null;
+                    return (
+                      <div
+                        key={rec.serviceId}
+                        className="p-3 rounded-2xl bg-sky-50/60 dark:bg-sky-950/20 border border-sky-200/80 dark:border-sky-800/40 flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-zinc-900 dark:text-white truncate">
+                              {rec.serviceName}
+                            </span>
+                            {rec.badge && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 font-semibold shrink-0">
+                                {rec.badge}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
+                            {rec.reason}
+                          </p>
+                          <span className="font-extrabold text-sky-600 dark:text-sky-400 block mt-0.5">
+                            +{rec.price.toLocaleString('ru-RU')} ₽
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onAddService(tariff)}
+                          className="shrink-0 px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs flex items-center gap-1 shadow-sm transition-all active:scale-95"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Добавить</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
 

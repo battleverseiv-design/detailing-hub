@@ -41,6 +41,11 @@ interface SlotItem {
   time: string;
   startAt: string;
   endAt: string;
+  activeWorkEndAt?: string;
+  cureEndAt?: string;
+  isMultiDay?: boolean;
+  workbayId?: string;
+  workbayName?: string;
   available: boolean;
 }
 
@@ -58,6 +63,8 @@ export function CheckoutRequestView({
   // Контакты
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('+7 ');
+  const [carBrandModel, setCarBrandModel] = useState('');
+  const [carLicensePlate, setCarLicensePlate] = useState('');
 
   // Адрес
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -123,10 +130,40 @@ export function CheckoutRequestView({
   const [submitError, setSubmitError] = useState('');
   const [idempotencyKey, setIdempotencyKey] = useState('');
 
-  // Инициализация idempotencyKey
+  // Инициализация idempotencyKey и захват источника заявки (UTM / Referrer)
   useEffect(() => {
     if (!idempotencyKey) {
       setIdempotencyKey(crypto.randomUUID());
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        if (!sessionStorage.getItem('detailing_utm_source')) {
+          const params = new URLSearchParams(window.location.search);
+          const utm = params.get('utm_source');
+          if (utm) {
+            sessionStorage.setItem('detailing_utm_source', utm);
+          } else if (document.referrer) {
+            const ref = document.referrer.toLowerCase();
+            if (ref.includes('yandex')) sessionStorage.setItem('detailing_utm_source', 'Яндекс');
+            else if (ref.includes('vk.com')) sessionStorage.setItem('detailing_utm_source', 'ВКонтакте');
+            else if (ref.includes('2gis')) sessionStorage.setItem('detailing_utm_source', '2ГИС');
+            else if (ref.includes('google')) sessionStorage.setItem('detailing_utm_source', 'Google');
+            else if (ref.includes('t.me')) sessionStorage.setItem('detailing_utm_source', 'Telegram');
+            else {
+              try {
+                sessionStorage.setItem('detailing_utm_source', new URL(document.referrer).hostname);
+              } catch {
+                sessionStorage.setItem('detailing_utm_source', 'Прямой переход');
+              }
+            }
+          } else {
+            sessionStorage.setItem('detailing_utm_source', 'Прямой переход');
+          }
+        }
+      } catch (e) {
+        // Safe fallback
+      }
     }
   }, [idempotencyKey]);
 
@@ -151,10 +188,13 @@ export function CheckoutRequestView({
     let isMounted = true;
     setIsLoadingSlots(true);
 
-    // Берем ID первой выбранной услуги из корзины для расчета длительности
+    // Собираем все выбранные ID услуг и класс автомобиля для точного расчета двухфазного времени
     const primaryServiceId = items[0]?.serviceId || 'srv-dry-clean';
+    const serviceIdsParam = items.map((i) => i.serviceId).filter(Boolean).join(',');
 
-    fetch(`/api/slots?slug=demo&serviceId=${encodeURIComponent(primaryServiceId)}&date=${desiredDate}`)
+    fetch(
+      `/api/slots?slug=demo&serviceId=${encodeURIComponent(primaryServiceId)}&serviceIds=${encodeURIComponent(serviceIdsParam)}&carClass=${encodeURIComponent(carClass)}&date=${desiredDate}`
+    )
       .then((res) => res.json())
       .then((data) => {
         if (!isMounted) return;
@@ -288,15 +328,18 @@ export function CheckoutRequestView({
         idempotencyKey,
         clientName: clientName.trim(),
         clientPhone: clientPhone.trim(),
+        carBrandModel: carBrandModel.trim() || undefined,
+        carLicensePlate: carLicensePlate.trim() || undefined,
         carClass,
         isDirty,
         serviceFormat,
         deliveryAddress: serviceFormat === 'mobile' 
           ? (deliveryAddress.trim() + (isOutsideCity ? ' (За пределами МКАД)' : ''))
-          : 'Студия (ул. Автозаводская, 21с7)',
+          : `${settings.shortName} (${settings.city}, ${settings.address})`,
         desiredDate: desiredDate || null,
         desiredTime: desiredTime || null,
         clientComment: clientComment.trim() || null,
+        source: typeof window !== 'undefined' ? (sessionStorage.getItem('detailing_utm_source') || 'Прямой переход') : 'Прямой переход',
         items,
         photos: uploadedPhotos,
       };
@@ -399,6 +442,32 @@ export function CheckoutRequestView({
                   onChange={(e) => handlePhoneChange(e.target.value)}
                   placeholder="+7 (___) ___-__-__"
                   className="w-full px-4 py-3 rounded-xl bg-[#0c0e14] border border-zinc-700/80 text-xs sm:text-sm text-white placeholder-zinc-500 font-mono focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-zinc-400 mb-1.5">
+                  Марка и модель авто
+                </label>
+                <input
+                  type="text"
+                  value={carBrandModel}
+                  onChange={(e) => setCarBrandModel(e.target.value)}
+                  placeholder="Например: BMW X5 или LADA Vesta"
+                  className="w-full px-4 py-3 rounded-xl bg-[#0c0e14] border border-zinc-700/80 text-xs sm:text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-zinc-400 mb-1.5">
+                  Госномер (необязательно)
+                </label>
+                <input
+                  type="text"
+                  value={carLicensePlate}
+                  onChange={(e) => setCarLicensePlate(e.target.value.toUpperCase())}
+                  placeholder="А 777 АА 777"
+                  className="w-full px-4 py-3 rounded-xl bg-[#0c0e14] border border-zinc-700/80 text-xs sm:text-sm text-white placeholder-zinc-500 font-mono font-bold focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all"
                 />
               </div>
             </div>
@@ -594,6 +663,32 @@ export function CheckoutRequestView({
                   ))}
                 </div>
               )}
+
+              {/* Информация о назначенном боксе и фазах */}
+              {desiredTime && (() => {
+                const selectedSlot = slots.find((s) => s.time === desiredTime);
+                if (!selectedSlot) return null;
+                return (
+                  <div className="p-3 rounded-2xl bg-sky-500/10 border border-sky-500/25 text-xs text-sky-200 flex flex-wrap items-center justify-between gap-2 mt-2">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-sky-400" />
+                      <span>
+                        Заезд в <strong className="text-white">{selectedSlot.time}</strong>
+                      </span>
+                      {selectedSlot.workbayName && (
+                        <span className="text-[11px] text-zinc-300">
+                          • {selectedSlot.workbayName}
+                        </span>
+                      )}
+                    </div>
+                    {selectedSlot.isMultiDay && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[11px] font-semibold">
+                        ⏳ Многодневный цикл (сушка/ночёвка в боксе)
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <p className="text-[11px] text-zinc-500 leading-relaxed pt-1">

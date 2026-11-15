@@ -128,27 +128,42 @@ async function runE2ETest() {
   }
   console.log('✓ Stage 5 passed: Order agreement (agreed price and slot) verified');
 
-  // 6. Мини-игра: выдача промокода
-  const bonusCode = 'CLEAN-9999';
-  const gameUpdatedOrder = await prisma.order.update({
+  // 6. Проверка перехода статуса заказа в работу
+  const inProgressOrder = await prisma.order.update({
     where: { token: testToken },
     data: {
-      miniGamePlayed: true,
-      miniGameBonusCode: bonusCode,
+      status: 'in_progress',
+      privateStudioNote: 'Автомобиль принят в бокс детейлинга',
     },
   });
 
-  if (!gameUpdatedOrder.miniGamePlayed || gameUpdatedOrder.miniGameBonusCode !== bonusCode) {
-    throw new Error('Mini game bonus recording failed');
+  if (inProgressOrder.status !== 'in_progress' || !inProgressOrder.privateStudioNote) {
+    throw new Error('Order transition to in_progress failed');
   }
-  console.log('✓ Stage 6 passed: Mini-game scratch-off bonus code generated & recorded');
+  console.log('✓ Stage 6 passed: Order workflow transition to in_progress verified');
 
-  // 7. Очистка тестового заказа
+  // 7. Проверка аудита отмены заказа и освобождения слотов
+  const cancelledOrder = await prisma.order.update({
+    where: { token: testToken },
+    data: {
+      status: 'cancelled',
+      cancelledAt: new Date(),
+      cancelledBy: 'client',
+      cancelReason: 'Изменились личные планы / график',
+    },
+  });
+
+  if (cancelledOrder.status !== 'cancelled' || !cancelledOrder.cancelledAt || cancelledOrder.cancelledBy !== 'client') {
+    throw new Error('Order cancellation audit verification failed');
+  }
+  console.log('✓ Stage 7 passed: Order cancellation audit fields (cancelledAt, cancelledBy, cancelReason) verified');
+
+  // 8. Очистка тестового заказа
   await prisma.order.delete({ where: { id: order.id } });
-  console.log('✓ Stage 7 passed: Cleaned up test order');
+  console.log('✓ Stage 8 passed: Cleaned up test order');
 
   console.log('\n========================================');
-  console.log('🎉 ALL 7 E2E INTEGRATION TESTS PASSED 100%!');
+  console.log('🎉 ALL 8 E2E INTEGRATION TESTS PASSED 100%!');
   console.log('========================================\n');
 }
 

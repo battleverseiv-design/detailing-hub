@@ -48,6 +48,15 @@ export interface ServiceItem {
   isPackage?: boolean;           // Комплексный пакет "все включено"
   includedServiceIds?: string[]; // ID услуг, входящих в этот комплекс
   order?: number;                // Порядок сортировки (Drag & Drop)
+  recommendInCart?: boolean;     // Рекомендовать в корзине перед чекаутом (Апсейл)
+
+  // Двухфазные слоты и посты (Workbays)
+  durationMinutes?: number;
+  activeDurationMinutes?: number; // Активная работа мастера
+  cureDurationMinutes?: number;   // Сушка / кристаллизация (бокс занят, мастер свободен)
+  bufferMinutes?: number;         // Буфер между заездами
+  requiredBayType?: string;       // wet, dry, cure, any
+  requiredServiceIds?: string[];  // Зависимости услуг (например, полировка перед керамикой)
 }
 
 export interface CartItem {
@@ -88,6 +97,23 @@ export interface OrderPhoto {
   createdAt: string;
 }
 
+export interface VehicleDamage {
+  id: string;
+  zone: string;
+  type: string; // 'scratch' | 'chip' | 'dent' | 'scuff' | 'repaint' | 'crack' | 'wear'
+  description?: string;
+  severity?: 'low' | 'medium' | 'high';
+}
+
+export interface InspectionPhoto {
+  id: string;
+  filename?: string;
+  url?: string;
+  zone?: string;
+  description?: string;
+  createdAt?: string;
+}
+
 export interface OrderRecord {
   id: string;
   token: string;
@@ -117,12 +143,53 @@ export interface OrderRecord {
 
   clientComment?: string | null;
   privateStudioNote?: string | null;
+  source?: string | null;
   items: CartItem[];
   photos: OrderPhoto[];
   tariffsSnapshot: Record<string, any>;
 
-  miniGamePlayed: boolean;
-  miniGameBonusCode?: string | null;
+  // Боксы и запись
+  bookingId?: string | null;
+
+  // Автомобиль и цифровой акт
+  carVin?: string | null;
+  carLicensePlate?: string | null;
+  mileage?: number | null;
+  fuelLevel?: number | null;
+  damagesJson?: string;
+  inspectionPhotosBeforeJson?: string;
+  inspectionPhotosAfterJson?: string;
+  clientSignatureUrl?: string | null;
+  masterSignatureUrl?: string | null;
+  actCompletedAt?: string | null;
+
+  // Финансы, P&L и оплата
+  suppliesCostRub?: number;
+  masterCommissionPct?: number;
+  masterPayoutRub?: number;
+  netProfitRub?: number;
+  isPaid?: boolean;
+  paymentMethod?: 'cash' | 'card' | 'sbp' | string;
+}
+
+export interface BentoFeature {
+  id: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  badge?: string;
+  icon?: string;
+  active: boolean;
+}
+
+export interface BeforeAfterItem {
+  id: string;
+  title: string;
+  description: string;
+  beforeImage: string;
+  afterImage: string;
+  beforeLabel?: string;
+  afterLabel?: string;
 }
 
 export interface StudioSettings extends BrandConfig {

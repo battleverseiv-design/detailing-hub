@@ -11,8 +11,11 @@ const DEFAULT_BRAND_CONFIG = {
   address: 'ул. Автозаводская, 23к7, бокс 12',
   phone: '+7 (999) 000-22-33',
   phoneRaw: '+79990002233',
-  telegramUrl: 'https://t.me/chistiy_bort_demo',
+  telegramUrl: 'https://t.me/detailinghub_demo',
   whatsappUrl: 'https://wa.me/79990002233',
+  telegramBotToken: '',
+  telegramChatId: '',
+  currency: '₽',
   workHours: 'Ежедневно с 09:00 до 21:00',
   accentColor: '#0284c7',
 
@@ -23,15 +26,6 @@ const DEFAULT_BRAND_CONFIG = {
 
   minOrderAmount: 3000,
   dirtyCarMarkupPercent: 30,
-
-  game: {
-    mode: 'bonus',
-    bonusText: 'Антидождь на лобовое стекло в подарок или скидка 500 ₽',
-    bonusDiscountRub: 500,
-    bonusPromoPrefix: 'CLEAN',
-    bonusValidityDays: 30,
-    bonusMinOrderRub: 4000,
-  },
 
   showMasterTooltips: true,
 };
@@ -230,7 +224,52 @@ async function main() {
   });
   console.log('Studio configuration and tariffs initialized.');
 
-  // 3. Создать/обновить Master / Tenant для модуля онлайн-записи
+  // 3. Создать/обновить посты и боксы студии (Workbays)
+  const defaultWorkbays = [
+    {
+      id: 'bay-wet-1',
+      name: 'Бокс №1 (Мокрый / Мойка & Экстракция)',
+      type: 'wet',
+      description: 'Гидроизолированный бокс с трапом, мойкой высокого давления и экстракторами',
+      order: 1,
+      isActive: true,
+    },
+    {
+      id: 'bay-dry-2',
+      name: 'Бокс №2 (Сухой / Полировка & Пленки)',
+      type: 'dry',
+      description: 'Обеспыленный бокс с профессиональным светом CRI 95+ для полировки',
+      order: 2,
+      isActive: true,
+    },
+    {
+      id: 'bay-cure-3',
+      name: 'Бокс №3 (Сушка & Кристаллизация)',
+      type: 'cure',
+      description: 'Сушильный пост с ИК-лампами для полимеризации керамики и кварца',
+      order: 3,
+      isActive: true,
+    },
+    {
+      id: 'bay-univ-4',
+      name: 'Бокс №4 (Универсальный детейлинг)',
+      type: 'universal',
+      description: 'Пост для комплексных работ и оперативного обслуживания',
+      order: 4,
+      isActive: true,
+    },
+  ];
+
+  for (const bay of defaultWorkbays) {
+    await prisma.workbay.upsert({
+      where: { id: bay.id },
+      update: bay,
+      create: bay,
+    });
+  }
+  console.log('Workbays initialized (4 detailing bays).');
+
+  // 4. Создать/обновить Master / Tenant для модуля онлайн-записи
   const demoUser = await prisma.user.upsert({
     where: { slug: 'demo' },
     update: {
@@ -249,12 +288,73 @@ async function main() {
     },
   });
 
-  // Услуги мастера
+  // Услуги мастера с двухфазным временем и зависимостями
   const demoServices = [
-    { id: 'srv-dry-clean', title: 'Комплексная химчистка салона', durationMinutes: 180, bufferMinutes: 30, price: 10000, description: 'Глубокая экстракция сидений, ковролина, потолка и сушка турбо-пушкой' },
-    { id: 'srv-polish', title: 'Восстановительная полировка кузова', durationMinutes: 240, bufferMinutes: 30, price: 16000, description: 'Устранение до 90% царапин, голограмм и зеркальный финиш' },
-    { id: 'srv-anti-rain', title: 'Нанесение антидождя (полусфера)', durationMinutes: 60, bufferMinutes: 15, price: 3000, description: 'Гидрофобное покрытие Aquapel / Krytex на лобовое и передние стёкла' },
-    { id: 'srv-leather', title: 'Очистка и консервация кожи', durationMinutes: 90, bufferMinutes: 15, price: 5000, description: 'Матовый крем-бальзам Koch Chemie против заломов и сухости' }
+    { 
+      id: 'srv-dry-clean', 
+      title: 'Комплексная химчистка салона', 
+      durationMinutes: 240,
+      activeDurationMinutes: 180, // 3 ч работа мастера
+      cureDurationMinutes: 60,    // 1 ч турбо-сушка в боксе
+      bufferMinutes: 20,
+      price: 10000, 
+      requiredBayType: 'wet',
+      requiredServiceIdsJson: '[]',
+      classMultipliersJson: JSON.stringify({ S: 1.0, M: 1.25, L: 1.5 }),
+      description: 'Глубокая экстракция сидений, ковролина, потолка и сушка турбо-пушкой' 
+    },
+    { 
+      id: 'srv-polish', 
+      title: 'Восстановительная полировка кузова', 
+      durationMinutes: 300,
+      activeDurationMinutes: 270, // 4.5 ч работа мастера
+      cureDurationMinutes: 30,    // 30 мин финишная протирка
+      bufferMinutes: 30,
+      price: 16000, 
+      requiredBayType: 'dry',
+      requiredServiceIdsJson: '[]',
+      classMultipliersJson: JSON.stringify({ S: 1.0, M: 1.25, L: 1.5 }),
+      description: 'Устранение до 90% царапин, голограмм и зеркальный финиш' 
+    },
+    { 
+      id: 'srv-ceramic', 
+      title: 'Керамическое покрытие 9H (2+1)', 
+      durationMinutes: 720,       // 12 часов общий цикл
+      activeDurationMinutes: 180, // 3 ч нанесение мастером
+      cureDurationMinutes: 540,   // 9 ч ИК-сушка и кристаллизация (бокс занят, мастер свободен!)
+      bufferMinutes: 30,
+      price: 25000, 
+      requiredBayType: 'cure',
+      requiredServiceIdsJson: JSON.stringify(['srv-polish']), // Требует полировки перед нанесением!
+      classMultipliersJson: JSON.stringify({ S: 1.0, M: 1.25, L: 1.5 }),
+      description: 'Нанесение керамического состава 9H с обязательной ИК-полимеризацией в камере' 
+    },
+    { 
+      id: 'srv-anti-rain', 
+      title: 'Нанесение антидождя (полусфера)', 
+      durationMinutes: 60,
+      activeDurationMinutes: 45,
+      cureDurationMinutes: 15,
+      bufferMinutes: 15, 
+      price: 3000, 
+      requiredBayType: 'any',
+      requiredServiceIdsJson: '[]',
+      classMultipliersJson: JSON.stringify({ S: 1.0, M: 1.2, L: 1.35 }),
+      description: 'Гидрофобное покрытие Aquapel / Krytex на лобовое и передние стёкла' 
+    },
+    { 
+      id: 'srv-leather', 
+      title: 'Очистка и консервация кожи', 
+      durationMinutes: 90,
+      activeDurationMinutes: 75,
+      cureDurationMinutes: 15,
+      bufferMinutes: 15, 
+      price: 5000, 
+      requiredBayType: 'universal',
+      requiredServiceIdsJson: '[]',
+      classMultipliersJson: JSON.stringify({ S: 1.0, M: 1.2, L: 1.4 }),
+      description: 'Матовый крем-бальзам Koch Chemie против заломов и сухости' 
+    }
   ];
 
   for (const s of demoServices) {

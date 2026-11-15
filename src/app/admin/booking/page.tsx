@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { 
   Calendar as CalendarIcon, 
   Clock, 
@@ -20,16 +21,34 @@ import {
   Palmtree,
   MessageSquare,
   AlertTriangle,
-  ArrowRight
+  ArrowRight,
+  Warehouse,
+  FileText,
+  XCircle,
+  ExternalLink,
+  Car,
+  Power
 } from 'lucide-react';
+
+interface WorkbayItem {
+  id: string;
+  name: string;
+  type: string;
+  description: string | null;
+  isActive: boolean;
+  order: number;
+}
 
 interface ServiceItem {
   id: string;
   title: string;
   description: string | null;
   durationMinutes: number;
+  activeDurationMinutes?: number;
+  cureDurationMinutes?: number;
   bufferMinutes: number;
   price: number;
+  requiredBayType?: string;
   isActive: boolean;
 }
 
@@ -68,13 +87,14 @@ const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const WEEK_HEADERS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
 export default function AdminBookingPage() {
-  const [activeTab, setActiveTab] = useState<'calendar' | 'schedule' | 'services'>('calendar');
+  const [activeTab, setActiveTab] = useState<'calendar' | 'schedule' | 'bays'>('calendar');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Данные
   const [services, setServices] = useState<ServiceItem[]>([]);
+  const [workbays, setWorkbays] = useState<WorkbayItem[]>([]);
   const [schedule, setSchedule] = useState<AvailabilityItem[]>([]);
   const [overrides, setOverrides] = useState<DateOverrideItem[]>([]);
   const [allOrders, setAllOrders] = useState<any[]>([]);
@@ -84,30 +104,54 @@ export default function AdminBookingPage() {
 
   // Визуальный календарь
   const today = new Date();
+  const todayDateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const [calendarYear, setCalendarYear] = useState(today.getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(today.getMonth()); // 0-11
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string>(todayDateStr);
 
   // Форма отпуска / каникул (диапазон)
   const [vacationStart, setVacationStart] = useState('');
   const [vacationEnd, setVacationEnd] = useState('');
 
-  // Форма услуги
+  // Форма поста (Workbay)
+  const [isEditingBay, setIsEditingBay] = useState(false);
+  const [bayForm, setBayForm] = useState<{
+    id?: string;
+    name: string;
+    type: string;
+    description: string;
+    isActive: boolean;
+    order: number;
+  }>({
+    name: '',
+    type: 'universal',
+    description: '',
+    isActive: true,
+    order: 1,
+  });
+
+  // Форма услуги с двухфазным временем
   const [isEditingService, setIsEditingService] = useState(false);
   const [serviceForm, setServiceForm] = useState<{
     id?: string;
     title: string;
     description: string;
     durationMinutes: number;
+    activeDurationMinutes: number;
+    cureDurationMinutes: number;
     bufferMinutes: number;
     price: number;
+    requiredBayType: string;
     isActive: boolean;
   }>({
     title: '',
     description: '',
     durationMinutes: 120,
-    bufferMinutes: 30,
+    activeDurationMinutes: 90,
+    cureDurationMinutes: 30,
+    bufferMinutes: 15,
     price: 5000,
+    requiredBayType: 'any',
     isActive: true,
   });
 
@@ -144,6 +188,7 @@ export default function AdminBookingPage() {
         }
         setSchedule(fullSchedule);
         setOverrides(sData.overrides || []);
+        setWorkbays(sData.workbays || []);
       }
 
       if (ordersRes.ok) {
@@ -161,6 +206,30 @@ export default function AdminBookingPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Заказы выбранного дня в календаре
+  const selectedDayOrders = useMemo(() => {
+    if (!selectedCalendarDate) return [];
+    return allOrders.filter((o) => {
+      if (o.desiredDate === selectedCalendarDate) return true;
+      if (o.agreedEntryDateTime && o.agreedEntryDateTime.startsWith(selectedCalendarDate)) return true;
+      if (o.booking?.startAt && String(o.booking.startAt).startsWith(selectedCalendarDate)) return true;
+      return false;
+    });
+  }, [allOrders, selectedCalendarDate]);
+
+  const selectedDateOverride = useMemo(() => {
+    return overrides.find((o) => o.date === selectedCalendarDate);
+  }, [overrides, selectedCalendarDate]);
+
+  const isSelectedDateDayOff = useMemo(() => {
+    if (selectedDateOverride) return selectedDateOverride.isDayOff;
+    if (!selectedCalendarDate) return false;
+    const [y, m, d] = selectedCalendarDate.split('-').map(Number);
+    const dayOfWeek = new Date(y, m - 1, d).getDay();
+    const sched = schedule.find((s) => s.dayOfWeek === dayOfWeek);
+    return sched ? !sched.isWorkingDay : false;
+  }, [selectedDateOverride, selectedCalendarDate, schedule]);
 
   // Генерация сетки дней текущего выбранного месяца
   const calendarDays = useMemo(() => {
@@ -388,6 +457,112 @@ export default function AdminBookingPage() {
     }
   };
 
+  // Сохранение поста (Workbay)
+  const handleSaveBay = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/booking/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_workbay',
+          data: bayForm,
+        }),
+      });
+      if (!res.ok) throw new Error('Ошибка сохранения поста');
+      const data = await res.json();
+      if (bayForm.id) {
+        setWorkbays((prev) => prev.map((b) => (b.id === bayForm.id ? data.workbay : b)));
+        showFeedback('success', `Пост «${data.workbay.name}» обновлён`);
+      } else {
+        setWorkbays((prev) => [...prev, data.workbay]);
+        showFeedback('success', `Пост «${data.workbay.name}» успешно добавлен`);
+      }
+      setIsEditingBay(false);
+    } catch (e: any) {
+      showFeedback('error', e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Удаление поста
+  const handleDeleteBay = async (id: string, name: string) => {
+    if (!confirm(`Удалить бокс «${name}»?`)) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/booking/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete_workbay',
+          data: { id },
+        }),
+      });
+      if (!res.ok) throw new Error('Ошибка удаления поста');
+      setWorkbays((prev) => prev.filter((b) => b.id !== id));
+      showFeedback('success', `Пост «${name}» удалён`);
+    } catch (e: any) {
+      showFeedback('error', e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Сохранение услуги расписания
+  const handleSaveService = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/booking/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_service',
+          data: serviceForm,
+        }),
+      });
+      if (!res.ok) throw new Error('Ошибка сохранения услуги');
+      const data = await res.json();
+      if (serviceForm.id) {
+        setServices((prev) => prev.map((s) => (s.id === serviceForm.id ? data.service : s)));
+        showFeedback('success', `Услуга «${data.service.title}» обновлена`);
+      } else {
+        setServices((prev) => [...prev, data.service]);
+        showFeedback('success', `Услуга «${data.service.title}» добавлена`);
+      }
+      setIsEditingService(false);
+    } catch (e: any) {
+      showFeedback('error', e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Удаление услуги
+  const handleDeleteService = async (id: string, title: string) => {
+    if (!confirm(`Удалить услугу «${title}»?`)) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/booking/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete_service',
+          data: { id },
+        }),
+      });
+      if (!res.ok) throw new Error('Ошибка удаления услуги');
+      setServices((prev) => prev.filter((s) => s.id !== id));
+      showFeedback('success', `Услуга «${title}» удалена`);
+    } catch (e: any) {
+      showFeedback('error', e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Быстрая ссылка на WhatsApp для предупреждения клиента
   const getWhatsAppLink = (client: ConflictOrder) => {
     const cleanPhone = client.clientPhone.replace(/[^\d]/g, '');
@@ -446,15 +621,21 @@ export default function AdminBookingPage() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('services')}
+            onClick={() => setActiveTab('bays')}
             className={`px-3.5 py-1.5 rounded-lg transition-all ${
-              activeTab === 'services'
+              activeTab === 'bays'
                 ? 'bg-white text-zinc-950 font-bold shadow-sm'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
-            Услуги ({services.length})
+            Боксы студии ({workbays.length})
           </button>
+          <Link
+            href="/admin/tariffs"
+            className="px-3.5 py-1.5 rounded-lg text-sky-400 hover:text-sky-300 hover:bg-zinc-800/60 font-semibold flex items-center gap-1.5 transition-all text-xs border border-sky-500/20"
+          >
+            <span>Управлять услугами и таймингами &rarr;</span>
+          </Link>
         </div>
       </div>
 
@@ -578,14 +759,17 @@ export default function AdminBookingPage() {
                   }
 
                   const isPast = new Date(item.dateStr) < new Date(today.toISOString().slice(0, 10));
+                  const isSelected = item.dateStr === selectedCalendarDate;
 
                   return (
                     <button
                       key={item.dateStr}
                       type="button"
-                      onClick={() => handleToggleCalendarDate(item.dateStr)}
+                      onClick={() => setSelectedCalendarDate(item.dateStr)}
                       className={`h-14 sm:h-16 shrink-0 overflow-hidden p-1 sm:p-2 rounded-xl sm:rounded-2xl text-left border transition-all flex flex-col justify-between group relative ${
-                        item.isDayOff
+                        isSelected
+                          ? 'ring-2 ring-white border-white/80 bg-zinc-800/90 shadow-lg shadow-white/10'
+                          : item.isDayOff
                           ? 'bg-rose-950/20 border-rose-900/40 text-rose-300 hover:border-rose-700/60'
                           : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-200 hover:border-zinc-700 hover:bg-zinc-900'
                       }`}
@@ -734,6 +918,165 @@ export default function AdminBookingPage() {
               </div>
             </div>
           </div>
+
+          {/* СЕКЦИЯ: РАСПИСАНИЕ И ЗАГРУЗКА БОКСОВ НА ВЫБРАННЫЙ ДЕНЬ */}
+          <div className="p-5 sm:p-6 rounded-3xl bg-zinc-950/70 border border-zinc-800/80 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-800/80">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs uppercase font-bold text-zinc-500 tracking-wider">
+                    Детализация постов студии
+                  </span>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                    isSelectedDateDayOff
+                      ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  }`}>
+                    {isSelectedDateDayOff ? 'Выходной / Студия закрыта' : 'Рабочий день'}
+                  </span>
+                </div>
+                <h3 className="text-lg font-bold text-white mt-0.5 flex items-center gap-2">
+                  <CalendarIcon className="w-4 h-4 text-sky-400" />
+                  <span>
+                    {selectedCalendarDate ? new Date(selectedCalendarDate).toLocaleDateString('ru-RU', {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    }) : ''}
+                  </span>
+                </h3>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => selectedCalendarDate && handleToggleCalendarDate(selectedCalendarDate)}
+                  disabled={saving}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 ${
+                    isSelectedDateDayOff
+                      ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                      : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30'
+                  }`}
+                >
+                  <Power className="w-3.5 h-3.5" />
+                  <span>{isSelectedDateDayOff ? 'Открыть этот день для записи' : 'Сделать день выходным'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* СЕТКА ПО БОКСАМ СТУДИИ */}
+            <div className="space-y-4">
+              {workbays.length === 0 ? (
+                <div className="p-6 text-center text-xs text-zinc-500 bg-zinc-900/40 rounded-2xl border border-zinc-800">
+                  Боксы студии еще не настроены. Перейдите во вкладку «Посты студии», чтобы добавить боксы.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {workbays.map((bay) => {
+                    const bayOrders = selectedDayOrders.filter((o) => {
+                      if (o.booking?.workbayId === bay.id) return true;
+                      if (!o.booking?.workbayId && o.booking?.service?.requiredBayType === bay.type) return true;
+                      return false;
+                    });
+
+                    const activeBayOrders = bayOrders.filter((o) => o.status !== 'cancelled');
+                    const cancelledBayOrders = bayOrders.filter((o) => o.status === 'cancelled');
+
+                    return (
+                      <div
+                        key={bay.id}
+                        className="p-4 sm:p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 space-y-3 flex flex-col justify-between"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-sm text-white flex items-center gap-2">
+                              <Warehouse className="w-4 h-4 text-sky-400" />
+                              <span>{bay.name}</span>
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-400 font-mono uppercase">
+                              {bay.type === 'wet' ? 'Мокрый' : bay.type === 'dry' ? 'Сухой' : bay.type === 'cure' ? 'Сушка' : 'Универсал'}
+                            </span>
+                          </div>
+                          {bay.description && (
+                            <p className="text-[11px] text-zinc-400">{bay.description}</p>
+                          )}
+                        </div>
+
+                        {/* Список броней в этом боксе */}
+                        <div className="space-y-2 pt-2 border-t border-zinc-800/60">
+                          {activeBayOrders.length === 0 && cancelledBayOrders.length === 0 ? (
+                            <div className="py-4 text-center text-xs text-zinc-500 bg-zinc-950/40 rounded-xl border border-dashed border-zinc-800">
+                              ✓ Бокс свободен в течение всей смены
+                            </div>
+                          ) : (
+                            <>
+                              {activeBayOrders.map((ord) => (
+                                <div
+                                  key={ord.id}
+                                  className="p-3 rounded-xl bg-zinc-950/80 border border-sky-500/30 text-xs space-y-1.5"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-white flex items-center gap-1.5">
+                                      <Car className="w-3.5 h-3.5 text-sky-400" />
+                                      <span>{ord.carBrandModel}</span>
+                                    </span>
+                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20 font-bold">
+                                      {ord.agreedEntryDateTime ? ord.agreedEntryDateTime.slice(-5) : ord.desiredTime || '09:00'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-zinc-400 text-[11px]">
+                                    <span>{ord.clientName} ({ord.clientPhone})</span>
+                                    <span className="font-bold text-zinc-200">
+                                      {ord.agreedFinalPrice != null ? `${ord.agreedFinalPrice.toLocaleString('ru-RU')} ₽` : `${ord.preliminaryTotal?.toLocaleString('ru-RU')} ₽`}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between pt-1 border-t border-zinc-900 text-[10px]">
+                                    <span className="text-zinc-500 font-mono">
+                                      Статус: {ord.status === 'in_progress' ? 'В боксе' : ord.status === 'agreed' ? 'Подтверждён' : 'Новый'}
+                                    </span>
+                                    <a
+                                      href={`/order/${ord.token}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1"
+                                    >
+                                      <span>Заказ-наряд А4</span>
+                                      <ExternalLink className="w-2.5 h-2.5" />
+                                    </a>
+                                  </div>
+                                </div>
+                              ))}
+
+                              {/* Отменённые бронирования (освобожденные слоты) */}
+                              {cancelledBayOrders.map((ord) => (
+                                <div
+                                  key={ord.id}
+                                  className="p-2.5 rounded-xl bg-rose-950/10 border border-rose-900/30 text-xs space-y-1 opacity-75"
+                                >
+                                  <div className="flex items-center justify-between text-rose-300">
+                                    <span className="line-through font-medium">{ord.carBrandModel} • {ord.clientName}</span>
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                      Отменено (бокс свободен)
+                                    </span>
+                                  </div>
+                                  {ord.cancelReason && (
+                                    <p className="text-[10px] text-zinc-400 italic">
+                                      Причина: {ord.cancelReason}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -834,81 +1177,191 @@ export default function AdminBookingPage() {
         </div>
       )}
 
-      {/* 3. ВКЛАДКА: УСЛУГИ ОНЛАЙН-ЗАПИСИ */}
-      {activeTab === 'services' && (
+      {/* 3. ВКЛАДКА: ПОСТЫ И БОКСЫ СТУДИИ (WORKBAYS) */}
+      {activeTab === 'bays' && (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-white">Услуги для онлайн-записи</h2>
+              <h2 className="text-base font-semibold text-white">Посты и боксы студии</h2>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Длительность услуги и буфер мастера определяют длину слота в календаре.
+                Движок расписания распределяет автомобили по физическим боксам с контролем сушки и полимеризации.
               </p>
             </div>
 
-            {!isEditingService && (
+            {!isEditingBay && (
               <button
                 type="button"
                 onClick={() => {
-                  setServiceForm({
-                    title: '',
+                  setBayForm({
+                    name: '',
+                    type: 'universal',
                     description: '',
-                    durationMinutes: 120,
-                    bufferMinutes: 30,
-                    price: 5000,
                     isActive: true,
+                    order: workbays.length + 1,
                   });
-                  setIsEditingService(true);
+                  setIsEditingBay(true);
                 }}
                 className="px-3.5 py-2 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 font-semibold text-xs flex items-center gap-1.5 transition-all shadow-sm"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Добавить услугу</span>
+                <span>Добавить бокс</span>
               </button>
             )}
           </div>
 
-          {/* Карточки услуг */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {services.map((s) => (
+          {/* Форма добавления/редактирования бокса */}
+          {isEditingBay && (
+            <form onSubmit={handleSaveBay} className="p-5 rounded-2xl bg-zinc-900/90 border border-zinc-700/80 space-y-4 animate-fadeIn">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                  {bayForm.id ? 'Редактировать пост' : 'Новый пост студии'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingBay(false)}
+                  className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-zinc-400 mb-1">
+                    Название поста / бокса
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={bayForm.name}
+                    onChange={(e) => setBayForm({ ...bayForm, name: e.target.value })}
+                    placeholder="напр. Бокс №1 (Мокрый / Экстракция)"
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white text-xs font-semibold focus:border-sky-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-400 mb-1">
+                    Специализация поста
+                  </label>
+                  <select
+                    value={bayForm.type}
+                    onChange={(e) => setBayForm({ ...bayForm, type: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white text-xs font-semibold focus:border-sky-500 outline-none"
+                  >
+                    <option value="universal">Универсальный детейлинг</option>
+                    <option value="wet">Мокрый бокс (мойка/экстракция)</option>
+                    <option value="dry">Сухой бокс (полировка/пленки)</option>
+                    <option value="cure">Камера сушки / кристаллизация</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-400 mb-1">
+                  Оснащение и комментарий
+                </label>
+                <input
+                  type="text"
+                  value={bayForm.description}
+                  onChange={(e) => setBayForm({ ...bayForm, description: e.target.value })}
+                  placeholder="напр. Трап слива, АВД, контурный свет CRI 95+, турбосушка"
+                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white text-xs focus:border-sky-500 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-zinc-300">
+                  <input
+                    type="checkbox"
+                    checked={bayForm.isActive}
+                    onChange={(e) => setBayForm({ ...bayForm, isActive: e.target.checked })}
+                    className="w-4 h-4 rounded text-sky-500"
+                  />
+                  <span>Пост активен и доступен для записи</span>
+                </label>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingBay(false)}
+                    className="px-3.5 py-1.5 rounded-xl border border-zinc-700 text-zinc-300 hover:bg-zinc-800 text-xs font-semibold"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-4 py-1.5 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 font-semibold text-xs flex items-center gap-1.5 transition-all shadow-sm disabled:opacity-50"
+                  >
+                    {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <span>Сохранить</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
+
+          {/* Список боксов */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            {workbays.map((bay) => (
               <div
-                key={s.id}
-                className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 flex flex-col justify-between gap-3"
+                key={bay.id}
+                className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 flex flex-col justify-between gap-3 hover:border-zinc-700 transition-colors"
               >
                 <div>
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
                     <div>
-                      <h4 className="text-sm font-semibold text-white">{s.title}</h4>
-                      {s.description && (
-                        <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{s.description}</p>
+                      <h4 className="text-sm font-semibold text-white">{bay.name}</h4>
+                      {bay.description && (
+                        <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">{bay.description}</p>
                       )}
                     </div>
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                        s.isActive
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 ${
+                        bay.isActive
                           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                           : 'bg-zinc-800 text-zinc-400 border-zinc-700'
                       }`}
                     >
-                      {s.isActive ? 'Активна' : 'Отключена'}
+                      {bay.isActive ? 'В работе' : 'Отключен'}
                     </span>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-[11px] text-zinc-400 bg-zinc-900/60 p-2.5 rounded-xl border border-zinc-800 font-mono">
-                    <div>
-                      <span className="block text-[10px] text-zinc-500">Длительность</span>
-                      <span className="text-zinc-200">{s.durationMinutes} мин</span>
-                    </div>
-                    <div>
-                      <span className="block text-[10px] text-zinc-500">Буфер</span>
-                      <span className="text-zinc-200">{s.bufferMinutes} мин</span>
-                    </div>
-                    <div>
-                      <span className="block text-[10px] text-zinc-500">Цена</span>
-                      <span className="text-white font-semibold">
-                        {s.price.toLocaleString('ru-RU')} ₽
-                      </span>
-                    </div>
+                  <div className="mt-2 flex items-center gap-2 text-[11px]">
+                    <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 font-mono">
+                      Тип: {bay.type === 'wet' ? 'Мокрый' : bay.type === 'dry' ? 'Сухой' : bay.type === 'cure' ? 'Сушка / ИК' : 'Универсал'}
+                    </span>
                   </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800/80">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBayForm({
+                        id: bay.id,
+                        name: bay.name,
+                        type: bay.type,
+                        description: bay.description || '',
+                        isActive: bay.isActive,
+                        order: bay.order,
+                      });
+                      setIsEditingBay(true);
+                    }}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                    title="Редактировать"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBay(bay.id, bay.name)}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                    title="Удалить"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             ))}
