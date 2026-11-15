@@ -220,24 +220,47 @@ export function CheckoutRequestView({
     };
   }, [desiredDate, items]);
 
-  // Форматирование телефона (+7 (XXX) XXX-XX-XX)
+  // Форматирование телефона (+7 РФ/КЗ, +375 Беларусь, либо международный ввод СНГ)
   const handlePhoneChange = (val: string) => {
-    let raw = val.replace(/[^\d]/g, '');
-    if (raw.startsWith('8')) raw = '7' + raw.slice(1);
-    if (!raw.startsWith('7')) raw = '7' + raw;
+    let clean = val.replace(/[^\d+]/g, '');
+    if (!clean.startsWith('+')) {
+      if (clean.startsWith('8')) clean = '+7' + clean.slice(1);
+      else if (clean.startsWith('7')) clean = '+' + clean;
+      else if (clean.startsWith('375')) clean = '+' + clean;
+      else clean = '+' + clean;
+    }
 
-    let formatted = '+7';
-    if (raw.length > 1) {
-      formatted += ' (' + raw.slice(1, 4);
+    const digits = clean.replace(/\D/g, '');
+
+    // Беларусь: +375 (XX) XXX-XX-XX
+    if (digits.startsWith('375')) {
+      let formatted = '+375';
+      const rest = digits.slice(3);
+      if (rest.length > 0) formatted += ' (' + rest.slice(0, 2);
+      if (rest.length >= 2) formatted += ') ' + rest.slice(2, 5);
+      if (rest.length >= 5) formatted += '-' + rest.slice(5, 7);
+      if (rest.length >= 7) formatted += '-' + rest.slice(7, 9);
+      setClientPhone(formatted);
+      return;
     }
-    if (raw.length >= 4) {
-      formatted += ') ' + raw.slice(4, 7);
+
+    // РФ / Казахстан: +7 (XXX) XXX-XX-XX
+    if (digits.startsWith('7')) {
+      let formatted = '+7';
+      const rest = digits.slice(1);
+      if (rest.length > 0) formatted += ' (' + rest.slice(0, 3);
+      if (rest.length >= 3) formatted += ') ' + rest.slice(3, 6);
+      if (rest.length >= 6) formatted += '-' + rest.slice(6, 8);
+      if (rest.length >= 8) formatted += '-' + rest.slice(8, 10);
+      setClientPhone(formatted);
+      return;
     }
-    if (raw.length >= 7) {
-      formatted += '-' + raw.slice(7, 9);
-    }
-    if (raw.length >= 9) {
-      formatted += '-' + raw.slice(9, 11);
+
+    // Другие страны СНГ / международный: свободный ввод + и цифры
+    let formatted = '+';
+    for (let i = 0; i < Math.min(digits.length, 15); i++) {
+      if (i > 0 && (i === 3 || i === 6 || i === 9 || i === 12)) formatted += ' ';
+      formatted += digits[i];
     }
     setClientPhone(formatted);
   };
@@ -286,7 +309,7 @@ export function CheckoutRequestView({
     setUploadedPhotos((prev) => prev.filter((p) => p.id !== photoId));
   };
 
-  // Итоговый пересчет с учетом выезда за МКАД
+  // Итоговый пересчет с учетом выезда за пределы города
   const cityMarkup = isOutsideCity && serviceFormat === 'mobile' ? 500 : 0;
   const finalTotal = pricing.preliminaryTotal + cityMarkup;
   const formattedFinalTotal = finalTotal.toLocaleString('ru-RU') + ' ₽';
@@ -303,9 +326,9 @@ export function CheckoutRequestView({
     }
 
     const cleanPhone = clientPhone.replace(/[^\d]/g, '');
-    if (cleanPhone.length < 11) {
+    if (cleanPhone.length < 10 || cleanPhone.length > 15) {
       triggerHaptic('error');
-      setSubmitError('Укажите полный номер телефона для связи');
+      setSubmitError('Укажите корректный номер телефона (от 10 до 15 цифр)');
       return;
     }
 
@@ -334,7 +357,7 @@ export function CheckoutRequestView({
         isDirty,
         serviceFormat,
         deliveryAddress: serviceFormat === 'mobile' 
-          ? (deliveryAddress.trim() + (isOutsideCity ? ' (За пределами МКАД)' : ''))
+          ? (deliveryAddress.trim() + (isOutsideCity ? ' (Выезд за пределы города)' : ''))
           : `${settings.shortName} (${settings.city}, ${settings.address})`,
         desiredDate: desiredDate || null,
         desiredTime: desiredTime || null,
@@ -546,7 +569,7 @@ export function CheckoutRequestView({
                       className="w-4 h-4 rounded text-sky-500 bg-zinc-900 border-zinc-700 cursor-pointer"
                     />
                     <label htmlFor="outsideCity" className="text-xs text-zinc-300 cursor-pointer select-none">
-                      За пределами МКАД
+                      Выезд за пределы города
                     </label>
                   </div>
                   <span className="text-xs font-mono text-zinc-400">+500 ₽</span>
@@ -825,7 +848,7 @@ export function CheckoutRequestView({
 
               {isOutsideCity && serviceFormat === 'mobile' && (
                 <div className="flex items-center justify-between">
-                  <span>Выезд за МКАД</span>
+                  <span>Выезд за пределы города</span>
                   <span className="font-mono text-zinc-200">500 ₽</span>
                 </div>
               )}

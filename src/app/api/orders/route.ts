@@ -239,9 +239,24 @@ export async function POST(req: NextRequest) {
         });
 
         if (demoUser && demoUser.services.length > 0) {
-          // Интеллектуальное сопоставление услуги из заказа с услугой в расписании (бокс, длительность)
+          // Интеллектуальное сопоставление и суммирование времени ВСЕХ услуг в корзине
+          const serviceIds = verifiedItems.map((item) => item.serviceId || item.name);
           const primaryCartItem = verifiedItems[0];
           const matchedService = resolveBookingService(demoUser.services, primaryCartItem?.serviceId || primaryCartItem?.name) || demoUser.services[0];
+
+          let totalActive = 0;
+          let maxCure = 0;
+          let maxBuffer = 15;
+
+          for (const item of verifiedItems) {
+            const s = resolveBookingService(demoUser.services, item.serviceId || item.name);
+            if (s) {
+              const qty = Math.max(1, item.quantity || 1);
+              totalActive += (s.activeDurationMinutes || s.durationMinutes || 60) * qty;
+              maxCure = Math.max(maxCure, s.cureDurationMinutes || 0);
+              maxBuffer = Math.max(maxBuffer, s.bufferMinutes || 15);
+            }
+          }
 
           const [startHour, startMin] = desiredTime.split(':').map(Number);
           const [year, month, day] = desiredDate.split('-').map(Number);
@@ -250,6 +265,12 @@ export async function POST(req: NextRequest) {
           await createBookingWithTransaction({
             userIdOrSlug: demoUser.id,
             serviceId: matchedService.id,
+            serviceIds,
+            customDuration: {
+              activeMinutes: totalActive,
+              cureMinutes: maxCure,
+              bufferMinutes: maxBuffer,
+            },
             clientName: String(clientName).trim(),
             clientPhone: String(clientPhone).trim(),
             startAt: startDate.toISOString(),

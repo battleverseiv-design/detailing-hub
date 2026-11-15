@@ -189,11 +189,27 @@ export async function DELETE(
       return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 });
     }
 
-    // Удаляем связанные фото с диска
+    // Удаляем связанные фото с диска (заявка, Фото До и Фото После)
     const photos: OrderPhoto[] = JSON.parse(order.photosJson || '[]');
     for (const photo of photos) {
-      if (photo.id) {
+      if (photo?.id) {
         await deletePhotoFile(photo.id);
+      }
+    }
+
+    const beforePhotos: any[] = JSON.parse(order.inspectionPhotosBeforeJson || '[]');
+    for (const photo of beforePhotos) {
+      const pid = photo?.id || (photo?.url ? photo.url.replace('/api/photos/', '').replace('.webp', '') : null);
+      if (pid) {
+        await deletePhotoFile(pid);
+      }
+    }
+
+    const afterPhotos: any[] = JSON.parse(order.inspectionPhotosAfterJson || '[]');
+    for (const photo of afterPhotos) {
+      const pid = photo?.id || (photo?.url ? photo.url.replace('/api/photos/', '').replace('.webp', '') : null);
+      if (pid) {
+        await deletePhotoFile(pid);
       }
     }
 

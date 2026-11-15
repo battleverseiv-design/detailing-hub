@@ -1,8 +1,9 @@
 import React from 'react';
 import Link from 'next/link';
 import { verifyAdminSession } from '@/lib/auth';
+import { getStudioSettings } from '@/lib/studio-service';
 import { AdminNav } from './AdminNav';
-import { ArrowLeft, Sparkles } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
 export const revalidate = 0;
 
@@ -12,21 +13,53 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const isAuth = await verifyAdminSession();
+  const settings = await getStudioSettings().catch(() => ({
+    shortName: 'DetailingHub',
+    studioName: 'DetailingHub',
+  }));
+
+  const shortName = settings.shortName || settings.studioName || 'DetailingHub';
+  const initials = shortName.slice(0, 2).toUpperCase();
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[#08090c] text-zinc-100 selection:bg-sky-500 selection:text-white">
-      {/* Боковая панель (Фиксированный сайдбар Cal.com / Linear style) */}
-      <aside className="w-full md:w-64 md:sticky md:top-0 md:h-screen md:overflow-y-auto bg-zinc-950/90 backdrop-blur-md border-r border-zinc-800/80 p-5 flex flex-col justify-between shrink-0 z-30">
+      {/* Мобильная панель навигации (md:hidden) — компактный бар со скроллом */}
+      <header className="md:hidden sticky top-0 z-30 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-800/80 px-4 py-2.5 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-sky-600 to-sky-400 flex items-center justify-center font-black text-white text-[10px]">
+              {initials}
+            </div>
+            <span className="font-semibold text-sm text-white">
+              {shortName}
+            </span>
+            <span className="text-[10px] text-zinc-500 font-medium">Админ</span>
+          </div>
+
+          <Link
+            href="/"
+            className="flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-white px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800"
+          >
+            <ArrowLeft className="w-3 h-3 text-zinc-500" />
+            <span>На сайт</span>
+          </Link>
+        </div>
+
+        {isAuth && <AdminNav mobile={true} />}
+      </header>
+
+      {/* Боковая панель для десктопа (hidden md:flex) */}
+      <aside className="hidden md:flex w-64 md:sticky md:top-0 md:h-screen md:overflow-y-auto bg-zinc-950/90 backdrop-blur-md border-r border-zinc-800/80 p-5 flex-col justify-between shrink-0 z-30">
         <div className="space-y-6">
           {/* Бренд студии */}
           <div className="pb-4 border-b border-zinc-800/70">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-sky-600 to-sky-400 flex items-center justify-center font-black text-white text-xs shadow-md shadow-sky-500/20">
-                DH
+                {initials}
               </div>
               <div>
                 <h2 className="font-semibold text-base text-white tracking-wide leading-none">
-                  DetailingHub
+                  {shortName}
                 </h2>
                 <span className="text-[10px] text-zinc-500 uppercase font-semibold tracking-wider block mt-1">
                   Кабинет владельца

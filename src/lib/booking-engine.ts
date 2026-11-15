@@ -483,7 +483,8 @@ export async function getAvailableSlots(params: {
  */
 export async function createBookingWithTransaction(data: {
   userIdOrSlug: string;
-  serviceId: string;
+  serviceId?: string;
+  serviceIds?: string[];
   clientName: string;
   clientPhone: string;
   clientEmail?: string;
@@ -492,10 +493,16 @@ export async function createBookingWithTransaction(data: {
   workbayId?: string;
   carClass?: string;
   orderId?: string;
+  customDuration?: {
+    activeMinutes?: number;
+    cureMinutes?: number;
+    bufferMinutes?: number;
+  };
 }) {
   const {
     userIdOrSlug,
     serviceId,
+    serviceIds,
     clientName,
     clientPhone,
     clientEmail,
@@ -504,36 +511,65 @@ export async function createBookingWithTransaction(data: {
     workbayId,
     carClass = 'M',
     orderId,
+    customDuration,
   } = data;
 
   const user = await prisma.user.findFirst({
     where: {
       OR: [{ id: userIdOrSlug }, { slug: userIdOrSlug }],
     },
+    include: {
+      services: true,
+    },
   });
 
   if (!user) throw new Error('USER_NOT_FOUND');
 
-  let service = await prisma.service.findFirst({
-    where: { id: serviceId, userId: user.id, isActive: true },
-  });
+  // Определяем список услуг (поддерживает суммирование нескольких услуг из корзины)
+  const targetIds = serviceIds && serviceIds.length > 0
+    ? serviceIds
+    : [serviceId].filter(Boolean) as string[];
 
-  if (!service) {
-    const allServices = await prisma.service.findMany({
-      where: { userId: user.id, isActive: true },
-    });
-    service = resolveBookingService(allServices, serviceId);
+  const matchedServices: any[] = [];
+  for (const tid of targetIds) {
+    const s = resolveBookingService(user.services, String(tid));
+    if (s && !matchedServices.some((m) => m.id === s.id)) {
+      matchedServices.push(s);
+    }
   }
 
-  if (!service) throw new Error('SERVICE_NOT_FOUND');
+  const primaryService = matchedServices[0] || resolveBookingService(user.services, serviceId) || user.services[0];
+  if (!primaryService) throw new Error('SERVICE_NOT_FOUND');
 
   const startDate = new Date(startAt);
   if (isNaN(startDate.getTime())) throw new Error('INVALID_DATE');
 
   const classMultiplier = carClass === 'L' ? 1.35 : carClass === 'M' ? 1.2 : 1.0;
-  const activeMinutes = Math.round((service.activeDurationMinutes || service.durationMinutes || 60) * classMultiplier);
-  const cureMinutes = service.cureDurationMinutes || 0;
-  const bufferMinutes = service.bufferMinutes || 15;
+
+  // Суммируем длительность всех выбранных услуг
+  let activeMinutes = 0;
+  let cureMinutes = 0;
+  let bufferMinutes = 15;
+  let requiredBayType = primaryService.requiredBayType || 'any';
+
+  if (customDuration?.activeMinutes != null && customDuration.activeMinutes > 0) {
+    activeMinutes = Math.round(customDuration.activeMinutes * classMultiplier);
+    cureMinutes = customDuration.cureMinutes || 0;
+    bufferMinutes = customDuration.bufferMinutes || 15;
+  } else if (matchedServices.length > 0) {
+    for (const s of matchedServices) {
+      activeMinutes += Math.round((s.activeDurationMinutes || s.durationMinutes || 60) * classMultiplier);
+      cureMinutes = Math.max(cureMinutes, s.cureDurationMinutes || 0);
+      bufferMinutes = Math.max(bufferMinutes, s.bufferMinutes || 15);
+      if (s.requiredBayType && s.requiredBayType !== 'any') {
+        requiredBayType = s.requiredBayType;
+      }
+    }
+  } else {
+    activeMinutes = Math.round((primaryService.activeDurationMinutes || primaryService.durationMinutes || 60) * classMultiplier);
+    cureMinutes = primaryService.cureDurationMinutes || 0;
+    bufferMinutes = primaryService.bufferMinutes || 15;
+  }
 
   // Рассчитываем фазы бронирования
   const timeline = await calculateMultiDayTimeline({
@@ -555,7 +591,7 @@ export async function createBookingWithTransaction(data: {
       });
 
       for (const bay of activeBays) {
-        if (!isBaySuitable(bay.type, service.requiredBayType || 'any')) continue;
+        if (!isBaySuitable(bay.type, requiredBayType)) continue;
 
         const bayConflict = await tx.booking.findFirst({
           where: {
@@ -609,7 +645,7 @@ export async function createBookingWithTransaction(data: {
     const booking = await tx.booking.create({
       data: {
         userId: user.id,
-        serviceId: service.id,
+        serviceId: primaryService.id,
         workbayId: targetBayId || null,
         clientName: clientName.trim(),
         clientPhone: clientPhone.trim(),

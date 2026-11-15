@@ -567,7 +567,7 @@ export default function AdminBookingPage() {
   const getWhatsAppLink = (client: ConflictOrder) => {
     const cleanPhone = client.clientPhone.replace(/[^\d]/g, '');
     const dateFormatted = client.desiredDate || client.agreedEntryDateTime || 'согласованную дату';
-    const msg = `Здравствуйте, ${client.clientName}! Вас беспокоит студия детейлинга DetailingHub. К сожалению, на ${dateFormatted} мастер не сможет принять ваш автомобиль (больничный/каникулы). Подскажите, пожалуйста, в какой день вам будет удобно перенести визит?`;
+    const msg = `Здравствуйте, ${client.clientName}! Вас беспокоит студия детейлинга. К сожалению, на ${dateFormatted} мастер не сможет принять ваш автомобиль (больничный/каникулы). Подскажите, пожалуйста, в какой день вам будет удобно перенести визит?`;
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
   };
 

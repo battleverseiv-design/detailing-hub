@@ -548,7 +548,7 @@ export function StudioClientApp({ settings }: StudioClientAppProps) {
                 const inCart = updatedCartItems.some((i) => i.serviceId === service.id);
                 const cartItem = updatedCartItems.find((i) => i.serviceId === service.id);
                 const currentQty = inCart ? cartItem?.quantity || 1 : service.allowsQuantity ? seatQuantity : 1;
-                const { unitPrice, itemTotal } = calculateItemPrice(service, carClass, isDirty, currentQty);
+                const { unitPrice, itemTotal } = calculateItemPrice(service, carClass, isDirty, currentQty, settings.dirtyCarMarkupPercent);
                 const isCovered = coveredServiceIds.has(service.id);
 
                 return (

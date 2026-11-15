@@ -99,6 +99,33 @@ export function hideTelegramBackButton(onClickHandler?: () => void) {
 }
 
 /**
+ * Безопасный переход по ссылке (Telegram / WhatsApp / Внешний сайт)
+ * Внутри Telegram Mini App использует нативные методы WebApp.openTelegramLink / WebApp.openLink,
+ * а в обычном браузере — стандартный переход через window.open.
+ */
+export function openTelegramOrExternalLink(url: string) {
+  if (typeof window === 'undefined' || !url) return;
+  const tg = getTelegramWebApp();
+
+  if (tg) {
+    try {
+      if ((url.startsWith('https://t.me/') || url.startsWith('tg://')) && typeof tg.openTelegramLink === 'function') {
+        tg.openTelegramLink(url);
+        return;
+      }
+      if (typeof tg.openLink === 'function') {
+        tg.openLink(url);
+        return;
+      }
+    } catch (e) {
+      console.warn('WebApp openLink fallback:', e);
+    }
+  }
+
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/**
  * -------------------------------------------------------------
  * СЕРВЕРНЫЕ УВЕДОМЛЕНИЯ ЧЕРЕЗ TELEGRAM BOT API
  * -------------------------------------------------------------

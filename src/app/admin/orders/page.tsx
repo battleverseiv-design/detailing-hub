@@ -217,6 +217,22 @@ export default function AdminOrdersPage() {
   const fileInputBeforeRef = useRef<HTMLInputElement>(null);
   const fileInputAfterRef = useRef<HTMLInputElement>(null);
 
+  const [settings, setSettings] = useState<any>({
+    shortName: 'Студия Детейлинга',
+    studioName: 'Студия Детейлинга',
+    city: 'Москва',
+    address: 'ул. Студийная, 1',
+  });
+
+  useEffect(() => {
+    fetch('/api/admin/studio')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && !data.error) setSettings(data);
+      })
+      .catch(() => {});
+  }, []);
+
   // Загрузка боксов студии
   useEffect(() => {
     fetch('/api/admin/booking/settings?userId=demo')
@@ -389,33 +405,12 @@ export default function AdminOrdersPage() {
     const totalCount = orders.length;
     const pendingCount = orders.filter((o) => o.status === 'new').length;
     const agreedCount = orders.filter((o) => o.status === 'agreed').length;
-    // Выручка и чистая прибыль считаются строго по выполненным И оплаченным клиентом заказам
+    const paidCount = orders.filter((o) => Boolean(o.isPaid)).length;
     const paidCompletedOrders = orders.filter((o) => o.status === 'completed' && Boolean(o.isPaid));
     const revenue = paidCompletedOrders.reduce((sum, o) => sum + (o.agreedFinalPrice || o.preliminaryTotal), 0);
-    const netProfit = paidCompletedOrders.reduce((sum, o) => {
-      if (o.netProfitRub != null) return sum + o.netProfitRub;
-      const orderRev = o.agreedFinalPrice || o.preliminaryTotal;
-      const supplies = o.suppliesCostRub || (orderRev * 0.15);
-      const gross = Math.max(0, orderRev - supplies);
-      const comm = (o.masterCommissionPct || 30) / 100;
-      return sum + (gross - gross * comm);
-    }, 0);
 
-    return { totalCount, pendingCount, agreedCount, revenue, netProfit };
+    return { totalCount, pendingCount, agreedCount, revenue, paidCount };
   }, [orders]);
-
-  // Расчет P&L прямо в форме заказа
-  const pnlCalculation = useMemo(() => {
-    const revenue = Number(editPrice) || 0;
-    const supplies = Number(editSuppliesCost) || 0;
-    const grossMargin = Math.max(0, revenue - supplies);
-    const commissionPct = Number(editMasterCommission) || 0;
-    const masterPayout = Math.round(grossMargin * (commissionPct / 100));
-    const netProfit = Math.max(0, grossMargin - masterPayout);
-    const marginPct = revenue > 0 ? Math.round((netProfit / revenue) * 100) : 0;
-
-    return { revenue, supplies, grossMargin, commissionPct, masterPayout, netProfit, marginPct };
-  }, [editPrice, editSuppliesCost, editMasterCommission]);
 
   // Быстрое изменение статуса прямо из карточки
   const handleQuickStatusChange = async (orderId: string, newStatus: 'new' | 'agreed' | 'in_progress' | 'completed' | 'cancelled') => {
@@ -423,20 +418,35 @@ export default function AdminOrdersPage() {
       const order = orders.find((o) => o.id === orderId);
       if (!order) return;
 
+      // Если статус переводится в подтверждённый, но дата/время еще не согласованы — открываем модалку для ввода слота
+      if (newStatus === 'agreed') {
+        const hasTime = Boolean(order.agreedEntryDateTime?.trim() || order.desiredDate?.trim());
+        if (!hasTime) {
+          handleOpenOrder(order);
+          setTimeout(() => {
+            const input = document.getElementById('agreed-entry-slot-input');
+            if (input) input.focus();
+          }, 150);
+          return;
+        }
+      }
+
+      const entryDate = order.agreedEntryDateTime || (order.desiredDate ? `${order.desiredDate} ${order.desiredTime || ''}`.trim() : '');
+
       const res = await fetch(`/api/admin/orders/${orderId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: newStatus,
           agreedFinalPrice: order.agreedFinalPrice != null ? order.agreedFinalPrice : order.preliminaryTotal,
-          agreedEntryDateTime: order.agreedEntryDateTime || (order.desiredDate ? `${order.desiredDate} ${order.desiredTime || ''}` : ''),
+          agreedEntryDateTime: entryDate,
           privateStudioNote: order.privateStudioNote || '',
         }),
       });
 
       if (res.ok) {
         setOrders((prev) =>
-          prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
+          prev.map((o) => (o.id === orderId ? { ...o, status: newStatus, agreedEntryDateTime: entryDate } : o))
         );
       }
     } catch (err) {
@@ -670,11 +680,11 @@ export default function AdminOrdersPage() {
 
           <div className="p-4 rounded-2xl bg-zinc-900/60 border border-emerald-900/40 col-span-2 lg:col-span-1 bg-gradient-to-br from-zinc-900/80 to-emerald-950/20">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-emerald-400 block mb-1">Чистая прибыль студии</span>
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <span className="text-[11px] font-bold text-emerald-400 block mb-1">Оплачено в студии</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             </div>
             <span className="text-2xl font-extrabold text-emerald-400 tracking-tight font-mono">
-              {stats.netProfit.toLocaleString('ru-RU')} ₽
+              {stats.paidCount} заказов
             </span>
           </div>
         </div>
@@ -981,10 +991,15 @@ export default function AdminOrdersPage() {
                       {statusLabels[order.status]}
                     </span>
 
-                    {/* Госномер */}
+                    {/* Госномер и пробег */}
                     {order.carLicensePlate && (
                       <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-700 text-[11px] font-mono font-bold text-white tracking-wider">
                         {order.carLicensePlate}
+                      </span>
+                    )}
+                    {order.mileage != null && order.mileage > 0 && (
+                      <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px] font-mono text-zinc-400">
+                        {order.mileage.toLocaleString('ru-RU')} км
                       </span>
                     )}
 
@@ -1003,7 +1018,7 @@ export default function AdminOrdersPage() {
                       </span>
                     )}
 
-                    {/* Статус оплаты по факту */}
+                    {/* Статус оплаты в студии (Нал / Карта / СБП) */}
                     <span
                       className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border ${
                         order.isPaid
@@ -1011,7 +1026,15 @@ export default function AdminOrdersPage() {
                           : 'bg-zinc-900 text-zinc-500 border-zinc-800'
                       }`}
                     >
-                      {order.isPaid ? '✓ Оплачен' : 'Не оплачен'}
+                      {order.isPaid
+                        ? `✓ Оплачено (${
+                            order.paymentMethod === 'card'
+                              ? 'Карта'
+                              : order.paymentMethod === 'sbp'
+                              ? 'СБП'
+                              : 'Нал'
+                          })`
+                        : 'Не оплачен'}
                     </span>
 
                     <span className="text-[11px] text-zinc-500 font-mono">
@@ -1020,11 +1043,6 @@ export default function AdminOrdersPage() {
                   </div>
 
                   <div className="flex items-center gap-3">
-                    {order.netProfitRub != null && order.netProfitRub > 0 && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-mono font-bold border border-emerald-500/20">
-                        Прибыль: +{order.netProfitRub.toLocaleString('ru-RU')} ₽
-                      </span>
-                    )}
                     <span className="text-base font-bold text-white font-mono">
                       {(order.agreedFinalPrice || order.preliminaryTotal).toLocaleString('ru-RU')} ₽
                     </span>
@@ -1086,54 +1104,108 @@ export default function AdminOrdersPage() {
                     </div>
                   </div>
 
-                  {/* Локация и желаемое время */}
+                  {/* Локация и согласованное время */}
                   <div className="space-y-1">
                     <div className="flex items-center gap-1.5 text-zinc-300">
                       <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                      <span>
+                      <span className="font-semibold text-white">
                         {order.agreedEntryDateTime
                           ? `Заезд: ${order.agreedEntryDateTime}`
                           : order.desiredDate
                           ? `Запрос: ${order.desiredDate} ${order.desiredTime || ''}`
-                          : 'Дата не указана'}
+                          : 'Время не согласовано'}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 text-zinc-400 truncate">
                       <MapPin className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                       <span className="truncate">
                         {order.serviceFormat === 'mobile'
-                          ? (order.deliveryAddress || 'Выезд к авто')
-                          : 'В боксе студии'}
+                          ? (order.deliveryAddress || 'Выезд за пределы города')
+                          : `В студии (${settings.city}, ${settings.address})`}
                       </span>
                     </div>
                   </div>
 
-                  {/* Услуги */}
-                  <div className="space-y-1">
-                    <div className="text-zinc-400 line-clamp-2">
+                  {/* Услуги, заметка мастера и 3 фото-блока */}
+                  <div className="space-y-1.5">
+                    <div className="text-zinc-300 font-medium line-clamp-2">
                       {order.items?.map((i) => i.name).join(', ') || 'Комплекс услуг'}
                     </div>
-                    {order.photos && order.photos.length > 0 && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-sky-400 font-medium">
-                        <Camera className="w-3.5 h-3.5" />
-                        <span>Прикреплено фото: {order.photos.length} шт.</span>
+
+                    {order.privateStudioNote && (
+                      <div className="p-1.5 rounded-lg bg-zinc-900/90 border border-amber-500/20 text-[11px] text-amber-300/90 leading-relaxed">
+                        <span className="text-amber-400 font-bold mr-1">Мастер:</span>
+                        <span>{order.privateStudioNote}</span>
                       </div>
                     )}
+
+                    {/* 3 фото-блока: Клиент, До, После */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[11px]">
+                      {order.photos && order.photos.length > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/20 text-sky-400 font-medium">
+                          <Camera className="w-3 h-3" />
+                          <span>Клиент: {order.photos.length}</span>
+                        </span>
+                      )}
+                      {order.inspectionPhotosBefore && order.inspectionPhotosBefore.length > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 font-medium">
+                          <Camera className="w-3 h-3" />
+                          <span>До: {order.inspectionPhotosBefore.length}</span>
+                        </span>
+                      )}
+                      {order.inspectionPhotosAfter && order.inspectionPhotosAfter.length > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium">
+                          <Camera className="w-3 h-3" />
+                          <span>После: {order.inspectionPhotosAfter.length}</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* Нижняя панель действий */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-zinc-800/60">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center flex-wrap gap-2">
                     <a
                       href={`/order/${order.token}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] text-zinc-400 hover:text-white transition-colors"
+                      className="inline-flex items-center gap-1 text-[11px] text-zinc-400 hover:text-white transition-colors mr-1"
                     >
                       <span>Ссылка клиента</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
+
+                    {/* Кнопки быстрой связи в 1 клик (WhatsApp / Telegram) */}
+                    {(() => {
+                      const cleanPhone = (order.clientPhone || '').replace(/\D/g, '');
+                      const clientMsg = `Здравствуйте, ${order.clientName}! Вас беспокоит студия детейлинга ${settings.shortName || 'DetailingHub'}. По поводу вашей записи #${order.id.slice(-6).toUpperCase()} (${order.carBrandModel}): `;
+                      return (
+                        <div className="flex items-center gap-1.5">
+                          <a
+                            href={`https://wa.me/${cleanPhone}?text=${encodeURIComponent(clientMsg)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 text-[11px] font-semibold flex items-center gap-1 transition-all"
+                            title="Открыть чат в WhatsApp с клиентом"
+                          >
+                            <Send className="w-3 h-3 text-emerald-400" />
+                            <span>WhatsApp</span>
+                          </a>
+
+                          <a
+                            href={`https://t.me/+${cleanPhone}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/25 text-[11px] font-semibold flex items-center gap-1 transition-all"
+                            title="Открыть чат в Telegram с клиентом"
+                          >
+                            <Send className="w-3 h-3 text-sky-400" />
+                            <span>Telegram</span>
+                          </a>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -1261,7 +1333,7 @@ export default function AdminOrdersPage() {
                 }`}
               >
                 <DollarSign className="w-4 h-4 text-emerald-500" />
-                <span>📋 Состав, Согласование и P&L</span>
+                <span>📋 Согласование и параметры заказа</span>
               </button>
 
               <button
@@ -1343,79 +1415,7 @@ export default function AdminOrdersPage() {
                   </div>
                 )}
 
-                {/* Карточка P&L Экономики */}
-                <div className="p-4 rounded-2xl bg-gradient-to-br from-zinc-900 to-zinc-950 border border-emerald-900/40 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <TrendingUp className="w-4 h-4" />
-                      Финансовая аналитика заказа (P&L)
-                    </h4>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-mono font-bold border border-emerald-500/20">
-                      Маржинальность {pnlCalculation.marginPct}%
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div className="p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800">
-                      <span className="text-[10px] text-zinc-400 block mb-0.5">Выручка (чек)</span>
-                      <span className="font-mono font-bold text-white text-sm">
-                        {pnlCalculation.revenue.toLocaleString('ru-RU')} ₽
-                      </span>
-                    </div>
-
-                    <div className="p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800">
-                      <span className="text-[10px] text-zinc-400 block mb-0.5">Расходники</span>
-                      <span className="font-mono font-bold text-amber-400 text-sm">
-                        -{pnlCalculation.supplies.toLocaleString('ru-RU')} ₽
-                      </span>
-                    </div>
-
-                    <div className="p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800">
-                      <span className="text-[10px] text-zinc-400 block mb-0.5">Выплата мастеру ({pnlCalculation.commissionPct}%)</span>
-                      <span className="font-mono font-bold text-sky-400 text-sm">
-                        -{pnlCalculation.masterPayout.toLocaleString('ru-RU')} ₽
-                      </span>
-                    </div>
-
-                    <div className="p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-800/40">
-                      <span className="text-[10px] text-emerald-400 block mb-0.5">Чистая прибыль студии</span>
-                      <span className="font-mono font-extrabold text-emerald-300 text-sm">
-                        +{pnlCalculation.netProfit.toLocaleString('ru-RU')} ₽
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Ввод параметров P&L */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-800/80 text-xs">
-                    <div>
-                      <label className="block text-zinc-400 mb-1 font-medium">
-                        Себестоимость расходных материалов (₽):
-                      </label>
-                      <input
-                        type="number"
-                        value={editSuppliesCost}
-                        onChange={(e) => setEditSuppliesCost(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-white font-mono text-xs"
-                        placeholder="Химия, полировальные круги..."
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-zinc-400 mb-1 font-medium">
-                        Доля мастера от маржи (%):
-                      </label>
-                      <input
-                        type="number"
-                        value={editMasterCommission}
-                        onChange={(e) => setEditMasterCommission(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-white font-mono text-xs"
-                        placeholder="Обычно 30-40%"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Согласование цены, времени и предоплаты */}
+                {/* Согласование цены, времени и оплаты */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
                   <div>
                     <label className="block text-zinc-400 mb-1 font-medium">
@@ -1425,7 +1425,7 @@ export default function AdminOrdersPage() {
                       type="number"
                       value={editPrice}
                       onChange={(e) => setEditPrice(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-white font-mono text-xs"
+                      className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500"
                     />
                   </div>
 
@@ -1434,11 +1434,12 @@ export default function AdminOrdersPage() {
                       Согласованное время заезда
                     </label>
                     <input
+                      id="agreed-entry-slot-input"
                       type="text"
                       value={editSlot}
                       onChange={(e) => setEditSlot(e.target.value)}
                       placeholder="Например: 18.11.2026 10:00"
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-white font-mono text-xs"
+                      className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500"
                     />
                   </div>
 

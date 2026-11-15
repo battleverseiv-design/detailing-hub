@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { openTelegramOrExternalLink } from '@/lib/telegram';
 import { 
   Copy, 
   Check, 
@@ -55,9 +56,36 @@ export function ClientTrackingActions({
   const isInWork = status === 'in_progress' || status === 'ready' || status === 'completed';
   const isCancelled = status === 'cancelled';
 
-  const handleCopyLink = () => {
+  const handleCopyLink = async () => {
     const url = window.location.href;
-    navigator.clipboard.writeText(url);
+    let ok = false;
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(url);
+        ok = true;
+      } catch (err) {
+        ok = false;
+      }
+    }
+
+    if (!ok && typeof document !== 'undefined') {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = url;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        ok = document.execCommand('copy');
+        document.body.removeChild(textArea);
+      } catch (err) {
+        console.warn('Fallback copy failed:', err);
+      }
+    }
+
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -114,15 +142,14 @@ export function ClientTrackingActions({
 
         {/* Telegram */}
         {telegramUrl && (
-          <a
-            href={telegramUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/25 text-xs font-bold transition-all active:scale-95"
+          <button
+            type="button"
+            onClick={() => openTelegramOrExternalLink(telegramUrl)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/25 text-xs font-bold transition-all active:scale-95 cursor-pointer"
           >
             <Send className="w-3.5 h-3.5" />
             <span>Telegram</span>
-          </a>
+          </button>
         )}
 
         {/* Звонок в студию */}

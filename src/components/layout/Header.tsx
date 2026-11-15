@@ -24,7 +24,7 @@ export function Header({ settings, cartCount = 0, cartTotalFormatted = '0 ₽', 
         <Link href="/" className="flex flex-col group py-0.5">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-lg sm:text-xl tracking-wide text-zinc-900 dark:text-white leading-none">
-              DetailingHub
+              {settings.shortName || settings.studioName || 'DetailingHub'}
             </span>
           </div>
           <p className="text-[11px] text-zinc-500 hidden sm:block mt-1">
