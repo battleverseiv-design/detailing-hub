@@ -2,8 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useTheme } from './ThemeContext';
-import { ShoppingBag, Sun, Moon, Phone, Send, MessageSquare } from 'lucide-react';
+import { ShoppingBag, Phone, Send, MessageSquare } from 'lucide-react';
 import { StudioSettings } from '@/types';
 
 interface HeaderProps {
@@ -14,10 +13,8 @@ interface HeaderProps {
 }
 
 export function Header({ settings, cartCount = 0, cartTotalFormatted = '0 ₽', onOpenCart }: HeaderProps) {
-  const { theme, toggleTheme } = useTheme();
-
   return (
-    <header className="sticky top-0 z-40 w-full backdrop-blur-md bg-white/80 dark:bg-zinc-950/80 border-b border-zinc-200 dark:border-zinc-800 transition-colors">
+    <header className="sticky top-0 z-40 w-full backdrop-blur-md bg-zinc-950/80 border-b border-zinc-800 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         
         {/* Логотип и название студии */}
@@ -65,18 +62,8 @@ export function Header({ settings, cartCount = 0, cartTotalFormatted = '0 ₽', 
           </a>
         </div>
 
-        {/* Правая панель: Тема, Админка, Корзина */}
+        {/* Правая панель: Админка, Корзина */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Переключатель темы */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="p-2 rounded-xl text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 transition-all"
-            title={theme === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему'}
-          >
-            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-sky-600" />}
-          </button>
-
           {/* Ссылка в админку */}
           <Link
             href="/admin"

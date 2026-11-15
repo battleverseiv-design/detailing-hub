@@ -487,7 +487,7 @@ export default function AdminStudioPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-zinc-300 mb-1">
-                Токен Telegram-бота (от @BotFather)
+                Telegram Bot Token (от @BotFather)
               </label>
               <input
                 type="password"
@@ -500,7 +500,7 @@ export default function AdminStudioPage() {
 
             <div>
               <label className="block text-xs font-bold text-zinc-300 mb-1">
-                Chat ID (от @userinfobot)
+                Telegram Chat ID (от @userinfobot)
               </label>
               <input
                 type="text"
@@ -520,7 +520,7 @@ export default function AdminStudioPage() {
               className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-bold text-xs active:scale-95 disabled:opacity-50 transition-all flex items-center gap-2 border border-zinc-800"
             >
               {testingTg ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5 text-sky-400" />}
-              <span>{testingTg ? 'Отправка...' : 'Отправить тестовое сообщение'}</span>
+              <span>{testingTg ? 'Отправка...' : 'Проверить уведомления'}</span>
             </button>
 
             {tgResult && (

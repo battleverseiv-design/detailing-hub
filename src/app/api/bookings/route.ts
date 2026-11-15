@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createBookingWithTransaction } from '@/lib/booking-engine';
 import { prisma } from '@/lib/db';
+import { verifyAdminSession } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
@@ -84,6 +85,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const isAuth = await verifyAdminSession();
+  if (!isAuth) {
+    return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId') || searchParams.get('slug') || 'demo';
@@ -132,6 +138,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const isAuth = await verifyAdminSession();
+  if (!isAuth) {
+    return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
+  }
+
   try {
     const body = await req.json();
     const { id, status } = body;

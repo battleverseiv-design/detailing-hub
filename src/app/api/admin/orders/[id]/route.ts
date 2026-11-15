@@ -131,14 +131,56 @@ export async function PUT(
       },
     });
 
-    if (isCancelling && existingOrder.bookingId) {
-      await prisma.booking.update({
-        where: { id: existingOrder.bookingId },
-        data: {
-          status: 'cancelled',
-          notes: `Отменено администратором: ${cancelReason}`,
-        },
-      }).catch((e) => console.warn('Could not update booking status on cancel:', e));
+    // Синхронизация статуса и слота со связанной бронью бокса (Booking)
+    if (existingOrder.bookingId) {
+      if (status === 'cancelled' || isCancelling) {
+        await prisma.booking.update({
+          where: { id: existingOrder.bookingId },
+          data: {
+            status: 'cancelled',
+            notes: `Отменено администратором: ${cancelReason || 'Отмена заказа'}`,
+          },
+        }).catch((e) => console.warn('Could not update booking status on cancel:', e));
+      } else if (agreedEntryDateTime && String(agreedEntryDateTime).trim()) {
+        try {
+          const rawStr = String(agreedEntryDateTime).trim();
+          let isoDateCandidate = rawStr;
+          if (/^\d{2}\.\d{2}\.\d{4}/.test(rawStr)) {
+            const [datePart, timePart] = rawStr.split(' ');
+            const [d, m, y] = datePart.split('.');
+            isoDateCandidate = `${y}-${m}-${d}T${timePart || '10:00'}:00`;
+          } else if (rawStr.includes(' ') && !rawStr.includes('T')) {
+            isoDateCandidate = rawStr.replace(' ', 'T') + (rawStr.split(' ')[1]?.length === 5 ? ':00' : '');
+          }
+          const startDt = new Date(isoDateCandidate);
+          if (!isNaN(startDt.getTime())) {
+            const currentBooking = await prisma.booking.findUnique({
+              where: { id: existingOrder.bookingId },
+              include: { service: true },
+            });
+            if (currentBooking) {
+              const durationMs = currentBooking.endAt && currentBooking.startAt
+                ? Math.max(30 * 60 * 1000, currentBooking.endAt.getTime() - currentBooking.startAt.getTime())
+                : ((currentBooking.service?.durationMinutes || 120) * 60 * 1000);
+              const endDt = new Date(startDt.getTime() + durationMs);
+              const newBookingStatus = ['agreed', 'in_progress', 'ready', 'completed'].includes(status || existingOrder.status)
+                ? 'confirmed'
+                : currentBooking.status;
+
+              await prisma.booking.update({
+                where: { id: existingOrder.bookingId },
+                data: {
+                  startAt: startDt,
+                  endAt: endDt,
+                  status: newBookingStatus,
+                },
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Could not sync booking start/end time:', e);
+        }
+      }
     }
 
     // Уведомление о смене статуса в Telegram (non-blocking)
@@ -213,7 +255,13 @@ export async function DELETE(
       }
     }
 
+    const associatedBookingId = order.bookingId;
     await prisma.order.delete({ where: { id } });
+    if (associatedBookingId) {
+      await prisma.booking.delete({ where: { id: associatedBookingId } }).catch((e) =>
+        console.warn('Could not delete associated booking:', e)
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

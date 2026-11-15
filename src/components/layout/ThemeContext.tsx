@@ -17,35 +17,27 @@ const ThemeContext = createContext<ThemeContextType>({
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('dark');
+  const [theme] = useState<Theme>('dark');
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem('detailing_theme') as Theme | null;
-      if (stored === 'light' || stored === 'dark') {
-        setThemeState(stored);
-        document.documentElement.classList.toggle('dark', stored === 'dark');
-      } else {
-        // По умолчанию тёмная премиальная тема детейлинга
-        document.documentElement.classList.add('dark');
-      }
+      localStorage.setItem('detailing_theme', 'dark');
+      document.documentElement.classList.add('dark');
     } catch {
       document.documentElement.classList.add('dark');
     }
     setMounted(true);
   }, []);
 
-  const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme);
-    try {
-      localStorage.setItem('detailing_theme', newTheme);
-      document.documentElement.classList.toggle('dark', newTheme === 'dark');
-    } catch {}
+  const setTheme = () => {
+    // Тёмная премиальная тема зафиксирована
+    document.documentElement.classList.add('dark');
   };
 
   const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark');
+    // Тёмная премиальная тема зафиксирована
+    document.documentElement.classList.add('dark');
   };
 
   // Предотвращаем гидратацию до монтирования

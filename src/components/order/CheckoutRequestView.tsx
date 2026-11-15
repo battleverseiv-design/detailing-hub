@@ -70,8 +70,14 @@ export function CheckoutRequestView({
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [isOutsideCity, setIsOutsideCity] = useState(false);
 
-  // Дата и время
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // Дата и время (локальная дата устройства пользователя без UTC-сдвига)
+  const getLocalDateString = (d: Date = new Date()) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  const todayStr = getLocalDateString();
   const [desiredDate, setDesiredDate] = useState(todayStr);
   const [desiredTime, setDesiredTime] = useState('');
   const [slots, setSlots] = useState<SlotItem[]>([]);

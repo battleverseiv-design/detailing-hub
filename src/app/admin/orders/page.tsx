@@ -155,6 +155,13 @@ const DEFECT_TYPES = [
 
 const GRID_HOURS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'];
 
+function getLocalDateString(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,7 +172,7 @@ export default function AdminOrdersPage() {
 
   // Режим просмотра: список или сетка боксов
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  const [gridDate, setGridDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [gridDate, setGridDate] = useState<string>(() => getLocalDateString());
   const [workbays, setWorkbays] = useState<WorkbayItem[]>([]);
 
   // Быстрое создание записи (+ Новая запись)
@@ -176,7 +183,7 @@ export default function AdminOrdersPage() {
   const [newCarLicensePlate, setNewCarLicensePlate] = useState('');
   const [newCarClass, setNewCarClass] = useState('M');
   const [newWorkbayId, setNewWorkbayId] = useState('');
-  const [newDate, setNewDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [newDate, setNewDate] = useState(() => getLocalDateString());
   const [newTime, setNewTime] = useState('10:00');
   const [newComment, setNewComment] = useState('');
   const [newPrice, setNewPrice] = useState('5000');
@@ -189,7 +196,8 @@ export default function AdminOrdersPage() {
 
   // Редактирование в модальном окне - P&L и согласование
   const [editPrice, setEditPrice] = useState<string>('');
-  const [editSlot, setEditSlot] = useState<string>('');
+  const [editSlotDate, setEditSlotDate] = useState<string>('');
+  const [editSlotTime, setEditSlotTime] = useState<string>('10:00');
   const [editNote, setEditNote] = useState<string>('');
   const [editSuppliesCost, setEditSuppliesCost] = useState<string>('0');
   const [editMasterCommission, setEditMasterCommission] = useState<string>('30');
@@ -278,7 +286,7 @@ export default function AdminOrdersPage() {
     const current = new Date(gridDate);
     if (isNaN(current.getTime())) return;
     current.setDate(current.getDate() + deltaDays);
-    setGridDate(current.toISOString().slice(0, 10));
+    setGridDate(getLocalDateString(current));
   };
 
   const handleOpenNewOrderModal = (prefillBayId?: string, prefillTime?: string) => {
@@ -288,7 +296,7 @@ export default function AdminOrdersPage() {
     setNewCarLicensePlate('');
     setNewCarClass('M');
     setNewWorkbayId(prefillBayId || (workbays[0]?.id || ''));
-    setNewDate(gridDate || new Date().toISOString().slice(0, 10));
+    setNewDate(gridDate || getLocalDateString());
     setNewTime(prefillTime || '10:00');
     setNewComment('');
     setNewPrice('5000');
@@ -461,7 +469,31 @@ export default function AdminOrdersPage() {
 
     const defaultPrice = order.agreedFinalPrice != null ? order.agreedFinalPrice : order.preliminaryTotal;
     setEditPrice(String(defaultPrice));
-    setEditSlot(order.agreedEntryDateTime || (order.desiredDate ? `${order.desiredDate} ${order.desiredTime || '10:00'}` : ''));
+
+    // Парсим дату и время из agreedEntryDateTime или desiredDate
+    const rawSlot = order.agreedEntryDateTime || (order.desiredDate ? `${order.desiredDate} ${order.desiredTime || '10:00'}` : '');
+    let initialDate = '';
+    let initialTime = '10:00';
+    if (rawSlot) {
+      const parts = rawSlot.includes('T') ? rawSlot.split('T') : rawSlot.split(' ');
+      if (parts[0]) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(parts[0])) {
+          initialDate = parts[0];
+        } else if (/^\d{2}\.\d{2}\.\d{4}$/.test(parts[0])) {
+          const [d, m, y] = parts[0].split('.');
+          initialDate = `${y}-${m}-${d}`;
+        }
+      }
+      if (parts[1]) {
+        const timeMatch = parts[1].match(/^(\d{2}:\d{2})/);
+        if (timeMatch) initialTime = timeMatch[1];
+      }
+    }
+    if (!initialDate) {
+      initialDate = order.desiredDate && /^\d{4}-\d{2}-\d{2}$/.test(order.desiredDate) ? order.desiredDate : getLocalDateString();
+    }
+    setEditSlotDate(initialDate);
+    setEditSlotTime(initialTime || '10:00');
     setEditNote(order.privateStudioNote || '');
 
     // Финансы и оплата
@@ -562,12 +594,13 @@ export default function AdminOrdersPage() {
     setSaveSuccess(false);
 
     const newStatus = targetStatus || activeOrder.status;
+    const combinedSlot = editSlotDate ? `${editSlotDate} ${editSlotTime || '10:00'}`.trim() : '';
 
     try {
       const payload: any = {
         status: newStatus,
         agreedFinalPrice: editPrice ? Number(editPrice) : activeOrder.preliminaryTotal,
-        agreedEntryDateTime: editSlot.trim(),
+        agreedEntryDateTime: combinedSlot,
         privateStudioNote: editNote.trim(),
 
         // P&L и оплата
@@ -813,7 +846,7 @@ export default function AdminOrdersPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setGridDate(new Date().toISOString().slice(0, 10))}
+                onClick={() => setGridDate(getLocalDateString())}
                 className="px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 text-xs font-bold transition-all"
               >
                 Сегодня
@@ -1433,14 +1466,21 @@ export default function AdminOrdersPage() {
                     <label className="block text-zinc-400 mb-1 font-medium">
                       Согласованное время заезда
                     </label>
-                    <input
-                      id="agreed-entry-slot-input"
-                      type="text"
-                      value={editSlot}
-                      onChange={(e) => setEditSlot(e.target.value)}
-                      placeholder="Например: 18.11.2026 10:00"
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500"
-                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        id="agreed-entry-slot-input"
+                        type="date"
+                        value={editSlotDate}
+                        onChange={(e) => setEditSlotDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500 [color-scheme:dark]"
+                      />
+                      <input
+                        type="time"
+                        value={editSlotTime}
+                        onChange={(e) => setEditSlotTime(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500 [color-scheme:dark]"
+                      />
+                    </div>
                   </div>
 
                   {/* Оплата по факту в студии */}
