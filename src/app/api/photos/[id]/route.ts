@@ -35,11 +35,13 @@ export async function GET(
       });
 
       if (order) {
-        const inOrderPhotos = order.photosJson?.includes(id);
-        const inBeforePhotos = order.inspectionPhotosBeforeJson?.includes(id);
-        const inAfterPhotos = order.inspectionPhotosAfterJson?.includes(id);
+        const hasPhoto = Boolean(
+          (order.photosJson && order.photosJson.includes(id)) ||
+          (order.inspectionPhotosBeforeJson && order.inspectionPhotosBeforeJson.includes(id)) ||
+          (order.inspectionPhotosAfterJson && order.inspectionPhotosAfterJson.includes(id))
+        );
 
-        if (inOrderPhotos || inBeforePhotos || inAfterPhotos) {
+        if (hasPhoto) {
           isAuthorized = true;
         }
       }

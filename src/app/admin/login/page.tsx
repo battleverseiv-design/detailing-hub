@@ -27,8 +27,7 @@ export default function AdminLoginPage() {
         throw new Error(data.error || 'Неверный пароль');
       }
 
-      router.push('/admin/orders');
-      router.refresh();
+      window.location.href = '/admin/orders';
     } catch (err: any) {
       setError(err.message || 'Ошибка авторизации');
       setLoading(false);

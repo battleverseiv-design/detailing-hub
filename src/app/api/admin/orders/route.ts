@@ -18,16 +18,6 @@ export async function GET(req: NextRequest) {
       where.status = status;
     }
 
-    if (search) {
-      where.OR = [
-        { clientName: { contains: search } },
-        { clientPhone: { contains: search } },
-        { carBrandModel: { contains: search } },
-        { carLicensePlate: { contains: search } },
-        { id: { contains: search } },
-      ];
-    }
-
     const orders = await prisma.order.findMany({
       where,
       include: {
@@ -48,7 +38,21 @@ export async function GET(req: NextRequest) {
       inspectionPhotosAfter: JSON.parse(o.inspectionPhotosAfterJson || '[]'),
     }));
 
-    return NextResponse.json(parsedOrders);
+    // Регистронезависимый поиск в JS (SQLite LIKE чувствителен к регистру кириллицы)
+    const filteredOrders = search
+      ? parsedOrders.filter((o) => {
+          const s = search.trim().toLowerCase();
+          return (
+            (o.clientName && o.clientName.toLowerCase().includes(s)) ||
+            (o.clientPhone && o.clientPhone.toLowerCase().includes(s)) ||
+            (o.carBrandModel && o.carBrandModel.toLowerCase().includes(s)) ||
+            (o.carLicensePlate && o.carLicensePlate.toLowerCase().includes(s)) ||
+            (o.id && o.id.toLowerCase().includes(s))
+          );
+        })
+      : parsedOrders;
+
+    return NextResponse.json(filteredOrders);
   } catch (err: any) {
     console.error('Error fetching admin orders:', err);
     return NextResponse.json({ error: 'Ошибка получения заказов' }, { status: 500 });
