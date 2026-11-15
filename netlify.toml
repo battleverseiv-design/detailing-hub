@@ -1,0 +1,8 @@
+[build]
+  command = "prisma generate --schema=./prisma/schema.prisma && next build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  DATABASE_URL = "file:./prisma/dev.db"
+  ADMIN_SESSION_SECRET = "super-secret-key-32chars-minimum-detailinghub"

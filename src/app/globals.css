@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --brand-accent: #0284c7;
+  --border: #e2e8f0;
+  --muted-foreground: #64748b;
+  --primary: #0284c7;
+  --primary-foreground: #ffffff;
+}
+
+html {
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
+}
+
+.dark {
+  --background: #090a0d;
+  --foreground: #f8fafc;
+  --brand-accent: #38bdf8;
+  --border: #27272a;
+  --muted-foreground: #a1a1aa;
+  --primary: #0284c7;
+  --primary-foreground: #ffffff;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
+  position: relative;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  letter-spacing: -0.01em;
+}
+
+/* Apple & Linear style Card: Distinct surface elevation + crisp borders */
+.apple-card {
+  background: #141722;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.10),
+    0 8px 30px -4px rgba(0, 0, 0, 0.6);
+}
+
+.apple-card:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.apple-card-active {
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.24) 0%, rgba(18, 24, 38, 0.95) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.75);
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.22),
+    0 10px 32px -4px rgba(2, 132, 199, 0.35);
+}
+
+.surface-card {
+  background: #141722;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
+    0 8px 24px -4px rgba(0, 0, 0, 0.5);
+}
+
+.surface-inset {
+  background: #0b0d14;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+/* Apple-style Interactive Button */
+.apple-btn {
+  transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.apple-btn:active {
+  transform: scale(0.975);
+}
+
+/* Tabular figures for pricing numbers */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.2);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.4);
+}

@@ -1,0 +1,16 @@
+{
+  "name": "DetailingHub — Студия Детейлинга",
+  "short_name": "DetailingHub",
+  "description": "Премиальная химчистка салона и детейлинг авто",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#0284c7",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
