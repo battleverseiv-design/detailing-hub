@@ -443,12 +443,21 @@ export default async function OrderPage({ params }: OrderPageProps) {
                       Фотофиксация ДО работ ({photosBefore.length})
                     </span>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {photosBefore.map((p) => (
-                        <div key={p.id} className="aspect-video rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={p.url || ''} alt="Фото до" className="w-full h-full object-cover" />
-                        </div>
-                      ))}
+                      {photosBefore.map((p) => {
+                        const photoUrl = p.id ? `/api/photos/${p.id}?token=${order.token}` : (p.url ? (p.url.includes('?') ? `${p.url}&token=${order.token}` : `${p.url}?token=${order.token}`) : '');
+                        return (
+                          <a
+                            key={p.id}
+                            href={photoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="aspect-video rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900 block hover:border-zinc-700 transition-colors"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={photoUrl} alt="Фото до" className="w-full h-full object-cover" />
+                          </a>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -460,12 +469,21 @@ export default async function OrderPage({ params }: OrderPageProps) {
                       Фотофиксация ПОСЛЕ работ ({photosAfter.length})
                     </span>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {photosAfter.map((p) => (
-                        <div key={p.id} className="aspect-video rounded-xl overflow-hidden border border-emerald-500/30 bg-zinc-900">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={p.url || ''} alt="Фото после" className="w-full h-full object-cover" />
-                        </div>
-                      ))}
+                      {photosAfter.map((p) => {
+                        const photoUrl = p.id ? `/api/photos/${p.id}?token=${order.token}` : (p.url ? (p.url.includes('?') ? `${p.url}&token=${order.token}` : `${p.url}?token=${order.token}`) : '');
+                        return (
+                          <a
+                            key={p.id}
+                            href={photoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="aspect-video rounded-xl overflow-hidden border border-emerald-500/30 bg-zinc-900 block hover:border-emerald-500/50 transition-colors"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={photoUrl} alt="Фото после" className="w-full h-full object-cover" />
+                          </a>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

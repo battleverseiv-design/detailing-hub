@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
         { clientName: { contains: search } },
         { clientPhone: { contains: search } },
         { carBrandModel: { contains: search } },
+        { carLicensePlate: { contains: search } },
         { id: { contains: search } },
       ];
     }

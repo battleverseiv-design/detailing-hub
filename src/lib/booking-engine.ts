@@ -283,7 +283,7 @@ export async function getAvailableSlots(params: {
   }
 
   // Матрица множителей времени по классу авто
-  const classMultiplier = carClass === 'L' ? 1.35 : carClass === 'M' ? 1.2 : 1.0;
+  const classMultiplier = carClass === 'OTHER' ? 1.5 : carClass === 'L' ? 1.35 : carClass === 'M' ? 1.2 : 1.0;
 
   // Суммируем длительности
   let activeMinutes = 0;
@@ -544,7 +544,7 @@ export async function createBookingWithTransaction(data: {
   const startDate = new Date(startAt);
   if (isNaN(startDate.getTime())) throw new Error('INVALID_DATE');
 
-  const classMultiplier = carClass === 'L' ? 1.35 : carClass === 'M' ? 1.2 : 1.0;
+  const classMultiplier = carClass === 'OTHER' ? 1.5 : carClass === 'L' ? 1.35 : carClass === 'M' ? 1.2 : 1.0;
 
   // Суммируем длительность всех выбранных услуг
   let activeMinutes = 0;

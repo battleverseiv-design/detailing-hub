@@ -81,8 +81,8 @@ export default function AdminTariffsPage() {
     ? [...settings.categories].sort((a, b) => (a.order || 0) - (b.order || 0))
     : DEFAULT_CATEGORIES;
 
-  // Изменение множителей с авто-пересчетом всех M и L
-  const handleMultiplierChange = (carClass: 'M' | 'L', val: number) => {
+  // Изменение множителей с авто-пересчетом всех M, L и OTHER
+  const handleMultiplierChange = (carClass: 'M' | 'L' | 'OTHER', val: number) => {
     if (!settings) return;
     const newMultipliers = {
       ...settings.classMultipliers,
@@ -90,6 +90,7 @@ export default function AdminTariffsPage() {
     };
     const multM = newMultipliers.M || 1.25;
     const multL = newMultipliers.L || 1.5;
+    const multOTHER = newMultipliers.OTHER || 1.7;
     const roundStep = settings.priceRoundStep ?? 100;
 
     const updatedTariffs = settings.tariffs.map((t) => {
@@ -101,6 +102,7 @@ export default function AdminTariffsPage() {
           S: baseS,
           M: calcPriceByMultiplier(baseS, multM, roundStep),
           L: calcPriceByMultiplier(baseS, multL, roundStep),
+          OTHER: calcPriceByMultiplier(baseS, multOTHER, roundStep),
         },
       };
     });
@@ -117,6 +119,7 @@ export default function AdminTariffsPage() {
     if (!settings) return;
     const multM = settings.classMultipliers?.M || 1.25;
     const multL = settings.classMultipliers?.L || 1.5;
+    const multOTHER = settings.classMultipliers?.OTHER || 1.7;
 
     const updatedTariffs = settings.tariffs.map((t) => {
       if (t.isCustomPhoto) return t;
@@ -127,6 +130,7 @@ export default function AdminTariffsPage() {
           S: baseS,
           M: calcPriceByMultiplier(baseS, multM, val),
           L: calcPriceByMultiplier(baseS, multL, val),
+          OTHER: calcPriceByMultiplier(baseS, multOTHER, val),
         },
       };
     });
@@ -138,11 +142,12 @@ export default function AdminTariffsPage() {
     });
   };
 
-  // Пересчитать все M и L цены принудительно в 1 клик
+  // Пересчитать все M, L и OTHER цены принудительно в 1 клик
   const handleRecalculateAllPrices = () => {
     if (!settings) return;
     const multM = settings.classMultipliers?.M || 1.25;
     const multL = settings.classMultipliers?.L || 1.5;
+    const multOTHER = settings.classMultipliers?.OTHER || 1.7;
     const roundStep = settings.priceRoundStep ?? 100;
 
     const updatedTariffs = settings.tariffs.map((t) => {
@@ -154,6 +159,7 @@ export default function AdminTariffsPage() {
           S: baseS,
           M: calcPriceByMultiplier(baseS, multM, roundStep),
           L: calcPriceByMultiplier(baseS, multL, roundStep),
+          OTHER: calcPriceByMultiplier(baseS, multOTHER, roundStep),
         },
       };
     });
@@ -161,11 +167,12 @@ export default function AdminTariffsPage() {
     setSettings({ ...settings, tariffs: updatedTariffs });
   };
 
-  // Изменение цены отдельной услуги (при изменении S автоматически считаем M и L)
-  const handlePriceChange = (serviceId: string, carClass: 'S' | 'M' | 'L', val: number) => {
+  // Изменение цены отдельной услуги (при изменении S автоматически считаем M, L и OTHER)
+  const handlePriceChange = (serviceId: string, carClass: 'S' | 'M' | 'L' | 'OTHER', val: number) => {
     if (!settings) return;
     const multM = settings.classMultipliers?.M || 1.25;
     const multL = settings.classMultipliers?.L || 1.5;
+    const multOTHER = settings.classMultipliers?.OTHER || 1.7;
     const roundStep = settings.priceRoundStep ?? 100;
 
     setSettings({
@@ -176,6 +183,7 @@ export default function AdminTariffsPage() {
         if (carClass === 'S') {
           newPrices.M = calcPriceByMultiplier(val, multM, roundStep);
           newPrices.L = calcPriceByMultiplier(val, multL, roundStep);
+          newPrices.OTHER = calcPriceByMultiplier(val, multOTHER, roundStep);
         }
         return {
           ...t,
@@ -311,6 +319,7 @@ export default function AdminTariffsPage() {
 
     const multM = settings.classMultipliers?.M || 1.25;
     const multL = settings.classMultipliers?.L || 1.5;
+    const multOTHER = settings.classMultipliers?.OTHER || 1.7;
     const roundStep = settings.priceRoundStep ?? 100;
     const baseS = 3000;
 
@@ -323,7 +332,8 @@ export default function AdminTariffsPage() {
       basePrices: { 
         S: baseS, 
         M: calcPriceByMultiplier(baseS, multM, roundStep), 
-        L: calcPriceByMultiplier(baseS, multL, roundStep) 
+        L: calcPriceByMultiplier(baseS, multL, roundStep),
+        OTHER: calcPriceByMultiplier(baseS, multOTHER, roundStep),
       },
       zones: ['interior_seats'],
       order: newOrder,
@@ -498,7 +508,7 @@ export default function AdminTariffsPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div>
             <label className="block text-[11px] font-bold text-zinc-400 mb-1">
               Класс S (Седан / Хэтч)
@@ -538,6 +548,21 @@ export default function AdminTariffsPage() {
               value={settings.classMultipliers?.L ?? 1.5}
               onChange={(e) => handleMultiplierChange('L', parseFloat(e.target.value) || 1.5)}
               className="w-full px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-sky-400 mb-1">
+              Класс OTHER (Минивэн)
+            </label>
+            <input
+              type="number"
+              step="0.05"
+              min="1.0"
+              max="3.5"
+              value={settings.classMultipliers?.OTHER ?? 1.7}
+              onChange={(e) => handleMultiplierChange('OTHER', parseFloat(e.target.value) || 1.7)}
+              className="w-full px-3 py-2 rounded-xl border border-sky-500/40 bg-zinc-900 text-xs font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
             />
           </div>
 
@@ -784,8 +809,8 @@ export default function AdminTariffsPage() {
                         </div>
                       </div>
 
-                      {/* Автоматически рассчитанные цены M и L по множителю */}
-                      <div className="hidden sm:flex items-center gap-2.5 px-3 py-1 rounded-xl bg-zinc-900/80 border border-zinc-800 text-xs">
+                      {/* Автоматически рассчитанные цены M, L и OTHER по множителю */}
+                      <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-xl bg-zinc-900/80 border border-zinc-800 text-xs">
                         <div className="text-center">
                           <span className="block text-[8px] font-bold text-zinc-500 uppercase">M (Кросс)</span>
                           <span className="font-bold text-zinc-300 text-xs">
@@ -797,6 +822,13 @@ export default function AdminTariffsPage() {
                           <span className="block text-[8px] font-bold text-zinc-500 uppercase">L (Джип)</span>
                           <span className="font-bold text-zinc-300 text-xs">
                             {t.basePrices.L?.toLocaleString('ru-RU')} ₽
+                          </span>
+                        </div>
+                        <div className="h-5 w-px bg-zinc-800" />
+                        <div className="text-center">
+                          <span className="block text-[8px] font-bold text-sky-400 uppercase">Минивэн</span>
+                          <span className="font-bold text-sky-300 text-xs">
+                            {(t.basePrices.OTHER ?? calcPriceByMultiplier(t.basePrices.S, settings.classMultipliers?.OTHER || 1.7, settings.priceRoundStep ?? 100))?.toLocaleString('ru-RU')} ₽
                           </span>
                         </div>
                       </div>
@@ -903,11 +935,11 @@ export default function AdminTariffsPage() {
                           <span>Цены для классов авто</span>
                         </span>
                         <span className="text-[10px] text-zinc-400">
-                          M и L рассчитываются автоматически от класса S
+                          M, L и OTHER рассчитываются автоматически по множителям от класса S
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-3 pt-1">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
                         <div>
                           <label className="block text-[10px] font-bold text-zinc-400 mb-1">
                             Класс S (База)
@@ -944,6 +976,19 @@ export default function AdminTariffsPage() {
                             value={t.basePrices.L}
                             onChange={(e) => handlePriceChange(t.id, 'L', Number(e.target.value))}
                             className="w-full px-2.5 py-1.5 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-bold text-white focus:border-sky-500 outline-none text-right"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-sky-400 mb-1">
+                            Класс OTHER (Минивэн)
+                          </label>
+                          <input
+                            type="number"
+                            step="100"
+                            value={t.basePrices.OTHER ?? calcPriceByMultiplier(t.basePrices.S, settings.classMultipliers?.OTHER || 1.7, settings.priceRoundStep ?? 100)}
+                            onChange={(e) => handlePriceChange(t.id, 'OTHER', Number(e.target.value))}
+                            className="w-full px-2.5 py-1.5 rounded-xl border border-sky-500/40 bg-zinc-900 text-xs font-bold text-white focus:border-sky-500 outline-none text-right"
                           />
                         </div>
                       </div>

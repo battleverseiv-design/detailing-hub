@@ -37,6 +37,7 @@ export interface ServiceItem {
     S: number;
     M: number;
     L: number;
+    OTHER?: number;
   };
   allowsQuantity?: boolean;
   unitLabel?: string; // напр. "сиденье", "элемент"

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { verifyAdminSession } from '@/lib/auth';
 import { getStudioSettings } from '@/lib/studio-service';
 import { AdminNav } from './AdminNav';
+import { AdminAuthGuard } from './AdminAuthGuard';
 import { ArrowLeft } from 'lucide-react';
 
 export const revalidate = 0;
@@ -91,7 +92,11 @@ export default async function AdminLayout({
 
       {/* Основной контент */}
       <main className="flex-1 min-w-0 p-4 sm:p-8 overflow-y-auto bg-gradient-to-b from-zinc-950/40 via-transparent to-transparent">
-        <div className="max-w-6xl mx-auto">{children}</div>
+        <div className="max-w-6xl mx-auto">
+          <AdminAuthGuard isAuth={isAuth}>
+            {children}
+          </AdminAuthGuard>
+        </div>
       </main>
     </div>
   );

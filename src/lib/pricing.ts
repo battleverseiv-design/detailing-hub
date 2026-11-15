@@ -265,9 +265,13 @@ export function calculateItemPrice(
     return { unitPrice: 0, itemTotal: 0 };
   }
 
-  // Для класса OTHER берем тариф L как базовый ориентир
-  const priceClass = carClass === 'OTHER' ? 'L' : carClass;
-  const baseUnitPrice = service.basePrices[priceClass] || 0;
+  // Для класса OTHER (Минивэн/Микроавтобус) берем явную цену или множитель 1.7 от класса S
+  let baseUnitPrice = 0;
+  if (carClass === 'OTHER') {
+    baseUnitPrice = service.basePrices.OTHER || Math.round((service.basePrices.S || 0) * 1.7);
+  } else {
+    baseUnitPrice = service.basePrices[carClass] || 0;
+  }
   
   const unitPrice = roundToTens(baseUnitPrice);
   const itemTotal = roundToTens(unitPrice * Math.max(1, quantity));

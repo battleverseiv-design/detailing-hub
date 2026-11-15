@@ -57,6 +57,7 @@ export interface BrandConfig {
     S: number;
     M: number;
     L: number;
+    OTHER?: number;
   };
   priceRoundStep: number; // Шаг округления: 0, 50, 100, 500
 
@@ -97,6 +98,7 @@ export const DEFAULT_BRAND_CONFIG: BrandConfig = {
     S: 1.0,
     M: 1.25,
     L: 1.5,
+    OTHER: 1.7,
   },
   priceRoundStep: 100,
 

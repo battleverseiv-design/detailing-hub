@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
       carClass,
       isDirty,
       serviceFormat,
+      isOutsideCity,
       deliveryAddress,
       desiredDate,
       desiredTime,
@@ -178,6 +179,14 @@ export async function POST(req: NextRequest) {
         mobileServiceEnabled: settings.mobileServiceEnabled,
       }
     );
+
+    // Доплата за выезд за пределы города (+500 ₽)
+    const hasOutsideCityMarkup = (Boolean(isOutsideCity) || String(deliveryAddress || '').includes('Выезд за пределы города')) && format === 'mobile';
+    if (hasOutsideCityMarkup) {
+      pricing.mobileFee += 500;
+      pricing.preliminaryTotal += 500;
+      pricing.displayTotalFormatted = `${pricing.preliminaryTotal.toLocaleString('ru-RU')} ₽`;
+    }
 
     // Для ручных заказов администратора с фиксированной ценой
     if (isAdminCreated && adminPrice != null) {

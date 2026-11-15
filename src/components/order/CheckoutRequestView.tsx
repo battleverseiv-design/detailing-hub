@@ -362,6 +362,7 @@ export function CheckoutRequestView({
         carClass,
         isDirty,
         serviceFormat,
+        isOutsideCity: Boolean(isOutsideCity),
         deliveryAddress: serviceFormat === 'mobile' 
           ? (deliveryAddress.trim() + (isOutsideCity ? ' (Выезд за пределы города)' : ''))
           : `${settings.shortName} (${settings.city}, ${settings.address})`,
