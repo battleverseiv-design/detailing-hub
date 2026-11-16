@@ -463,7 +463,7 @@ export default function AdminTariffsPage() {
         <button
           type="submit"
           disabled={saving}
-          className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs shadow-md shadow-sky-600/20 active:scale-95 disabled:opacity-60 transition-all flex items-center gap-2 self-start sm:self-auto"
+          className="min-h-[44px] px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs sm:text-sm shadow-md shadow-sky-600/20 active:scale-95 disabled:opacity-60 transition-all flex items-center justify-center gap-2 w-full sm:w-auto"
         >
           <Save className="w-4 h-4" />
           <span>{saving ? 'Сохранение...' : 'Сохранить изменения'}</span>
@@ -500,10 +500,10 @@ export default function AdminTariffsPage() {
           <button
             type="button"
             onClick={handleRecalculateAllPrices}
-            className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs font-bold border border-zinc-700/80 transition-all flex items-center gap-1.5 self-start"
+            className="min-h-[44px] px-4 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs sm:text-sm font-bold border border-zinc-700/80 transition-all flex items-center justify-center gap-2 w-full sm:w-auto"
             title="Принудительно обновить цены M и L для всех тарифов"
           >
-            <Wand2 className="w-3.5 h-3.5 text-sky-400" />
+            <Wand2 className="w-4 h-4 text-sky-400" />
             <span>Пересчитать все M и L</span>
           </button>
         </div>
@@ -517,7 +517,7 @@ export default function AdminTariffsPage() {
               type="text"
               disabled
               value="1.00 (База)"
-              className="w-full px-3 py-2 rounded-xl border border-zinc-800 bg-zinc-900/60 text-zinc-400 text-xs font-bold cursor-not-allowed"
+              className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-800 bg-zinc-900/60 text-zinc-400 text-base sm:text-sm font-bold cursor-not-allowed"
             />
           </div>
 
@@ -532,7 +532,7 @@ export default function AdminTariffsPage() {
               max="2.5"
               value={settings.classMultipliers?.M ?? 1.25}
               onChange={(e) => handleMultiplierChange('M', parseFloat(e.target.value) || 1.25)}
-              className="w-full px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
+              className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
             />
           </div>
 
@@ -547,7 +547,7 @@ export default function AdminTariffsPage() {
               max="3.0"
               value={settings.classMultipliers?.L ?? 1.5}
               onChange={(e) => handleMultiplierChange('L', parseFloat(e.target.value) || 1.5)}
-              className="w-full px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
+              className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
             />
           </div>
 
@@ -562,7 +562,7 @@ export default function AdminTariffsPage() {
               max="3.5"
               value={settings.classMultipliers?.OTHER ?? 1.7}
               onChange={(e) => handleMultiplierChange('OTHER', parseFloat(e.target.value) || 1.7)}
-              className="w-full px-3 py-2 rounded-xl border border-sky-500/40 bg-zinc-900 text-xs font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
+              className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-sky-500/40 bg-zinc-900 text-base sm:text-sm font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
             />
           </div>
 
@@ -573,7 +573,7 @@ export default function AdminTariffsPage() {
             <select
               value={settings.priceRoundStep ?? 100}
               onChange={(e) => handleRoundStepChange(Number(e.target.value))}
-              className="w-full px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
+              className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
             >
               <option value={0}>Без округления</option>
               <option value={50}>До 50 ₽</option>
@@ -594,7 +594,7 @@ export default function AdminTariffsPage() {
               step="500"
               value={settings.minOrderAmount ?? 3000}
               onChange={(e) => setSettings({ ...settings, minOrderAmount: Number(e.target.value) })}
-              className="w-full px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
+              className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
             />
           </div>
 
@@ -607,7 +607,7 @@ export default function AdminTariffsPage() {
               step="5"
               value={settings.dirtyCarMarkupPercent ?? 30}
               onChange={(e) => setSettings({ ...settings, dirtyCarMarkupPercent: Number(e.target.value) })}
-              className="w-full px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
+              className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
             />
           </div>
 
@@ -620,7 +620,7 @@ export default function AdminTariffsPage() {
               step="100"
               value={settings.mobileServicePrice ?? 1500}
               onChange={(e) => setSettings({ ...settings, mobileServicePrice: Number(e.target.value) })}
-              className="w-full px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
+              className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-bold text-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
             />
           </div>
         </div>

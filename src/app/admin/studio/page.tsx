@@ -154,7 +154,7 @@ export default function AdminStudioPage() {
           <button
             type="submit"
             disabled={saving}
-            className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs shadow-md shadow-sky-600/20 active:scale-95 disabled:opacity-60 transition-all flex items-center gap-2 self-start sm:self-auto"
+            className="min-h-[44px] px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs sm:text-sm shadow-md shadow-sky-600/20 active:scale-95 disabled:opacity-60 transition-all flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             <Save className="w-4 h-4" />
             <span>{saving ? 'Сохранение...' : 'Сохранить изменения'}</span>
@@ -176,7 +176,7 @@ export default function AdminStudioPage() {
         )}
 
         {/* 1. Основная информация */}
-        <div className="bg-zinc-950/80 rounded-3xl p-6 border border-zinc-800/80 shadow-sm space-y-4">
+        <div className="bg-zinc-950/80 rounded-3xl p-5 sm:p-6 border border-zinc-800/80 shadow-sm space-y-4">
           <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <Building2 className="w-4 h-4 text-sky-400" />
             <span>Название и слоган</span>
@@ -191,7 +191,7 @@ export default function AdminStudioPage() {
                 type="text"
                 value={settings.studioName}
                 onChange={(e) => setSettings({ ...settings, studioName: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
 
@@ -203,7 +203,7 @@ export default function AdminStudioPage() {
                 type="text"
                 value={settings.shortName}
                 onChange={(e) => setSettings({ ...settings, shortName: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
           </div>
@@ -216,13 +216,13 @@ export default function AdminStudioPage() {
               type="text"
               value={settings.tagline}
               onChange={(e) => setSettings({ ...settings, tagline: e.target.value })}
-              className="w-full px-3.5 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+              className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
             />
           </div>
         </div>
 
         {/* 2. Контакты и локация */}
-        <div className="bg-zinc-950/80 rounded-3xl p-6 border border-zinc-800/80 shadow-sm space-y-4">
+        <div className="bg-zinc-950/80 rounded-3xl p-5 sm:p-6 border border-zinc-800/80 shadow-sm space-y-4">
           <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <Phone className="w-4 h-4 text-sky-400" />
             <span>Контакты и локация</span>
@@ -237,7 +237,7 @@ export default function AdminStudioPage() {
                 type="text"
                 value={settings.city}
                 onChange={(e) => setSettings({ ...settings, city: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
 
@@ -249,7 +249,7 @@ export default function AdminStudioPage() {
                 type="text"
                 value={settings.address}
                 onChange={(e) => setSettings({ ...settings, address: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
 
@@ -261,7 +261,7 @@ export default function AdminStudioPage() {
                 type="text"
                 value={settings.phone}
                 onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
 
@@ -273,7 +273,7 @@ export default function AdminStudioPage() {
                 type="text"
                 value={settings.workHours}
                 onChange={(e) => setSettings({ ...settings, workHours: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
 
@@ -285,7 +285,7 @@ export default function AdminStudioPage() {
                 type="text"
                 value={settings.telegramUrl}
                 onChange={(e) => setSettings({ ...settings, telegramUrl: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
 
@@ -297,7 +297,7 @@ export default function AdminStudioPage() {
                 type="text"
                 value={settings.whatsappUrl}
                 onChange={(e) => setSettings({ ...settings, whatsappUrl: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
           </div>
@@ -496,7 +496,7 @@ export default function AdminStudioPage() {
                 value={settings.telegramBotToken || ''}
                 onChange={(e) => setSettings({ ...settings, telegramBotToken: e.target.value })}
                 placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
-                className="w-full px-3.5 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
 
@@ -509,7 +509,7 @@ export default function AdminStudioPage() {
                 value={settings.telegramChatId || ''}
                 onChange={(e) => setSettings({ ...settings, telegramChatId: e.target.value })}
                 placeholder="123456789 или -100123456789"
-                className="w-full px-3.5 py-2 rounded-xl border border-zinc-700 bg-zinc-900 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
           </div>
@@ -519,9 +519,9 @@ export default function AdminStudioPage() {
               type="button"
               disabled={testingTg || !settings.telegramBotToken || !settings.telegramChatId}
               onClick={handleTestTelegram}
-              className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-bold text-xs active:scale-95 disabled:opacity-50 transition-all flex items-center gap-2 border border-zinc-800"
+              className="min-h-[44px] px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-bold text-xs sm:text-sm active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 border border-zinc-800 w-full sm:w-auto"
             >
-              {testingTg ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5 text-sky-400" />}
+              {testingTg ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 text-sky-400" />}
               <span>{testingTg ? 'Отправка...' : 'Проверить уведомления'}</span>
             </button>
 

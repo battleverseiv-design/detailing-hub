@@ -91,7 +91,10 @@ function formatRussianDate(dStr: string): string {
   const [y, m, d] = dStr.split('-').map(Number);
   if (!y || !m || !d) return dStr;
   const date = new Date(y, m - 1, d);
-  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }).replace(' г.', '');
+  const dayStr = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }).replace(' г.', '');
+  const weekdays = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+  const wd = weekdays[date.getDay()];
+  return `${dayStr}, ${wd}`;
 }
 
 export default function AdminBookingPage() {
@@ -603,15 +606,15 @@ export default function AdminBookingPage() {
           </p>
         </div>
 
-        {/* Табы */}
-        <div className="flex bg-zinc-900 p-1 rounded-xl text-xs font-medium border border-zinc-800 self-start">
+        {/* Табы (Mobile-First min-h-[44px]) */}
+        <div className="grid grid-cols-1 sm:flex bg-zinc-900 p-1.5 rounded-2xl text-xs sm:text-sm font-semibold border border-zinc-800 gap-1 w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setActiveTab('calendar')}
-            className={`px-3.5 py-1.5 rounded-lg transition-all ${
+            className={`min-h-[44px] px-4 py-2.5 rounded-xl transition-all flex items-center justify-center ${
               activeTab === 'calendar'
                 ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                : 'text-zinc-400 hover:text-white'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
             }`}
           >
             Календарь и отпуска
@@ -619,10 +622,10 @@ export default function AdminBookingPage() {
           <button
             type="button"
             onClick={() => setActiveTab('schedule')}
-            className={`px-3.5 py-1.5 rounded-lg transition-all ${
+            className={`min-h-[44px] px-4 py-2.5 rounded-xl transition-all flex items-center justify-center ${
               activeTab === 'schedule'
                 ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                : 'text-zinc-400 hover:text-white'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
             }`}
           >
             Базовый график недели
@@ -630,10 +633,10 @@ export default function AdminBookingPage() {
           <button
             type="button"
             onClick={() => setActiveTab('bays')}
-            className={`px-3.5 py-1.5 rounded-lg transition-all ${
+            className={`min-h-[44px] px-4 py-2.5 rounded-xl transition-all flex items-center justify-center ${
               activeTab === 'bays'
                 ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                : 'text-zinc-400 hover:text-white'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
             }`}
           >
             Боксы студии ({workbays.length})
@@ -777,7 +780,7 @@ export default function AdminBookingPage() {
                       }`}
                     >
                       <div className="flex items-center justify-between w-full">
-                        <span className={`text-[11px] sm:text-xs font-bold ${item.isDayOff ? 'text-rose-400' : 'text-white'}`}>
+                        <span className={`text-xs sm:text-sm font-bold ${item.isDayOff ? 'text-rose-400' : 'text-white'}`}>
                           {item.dayNumber}
                         </span>
 
@@ -843,7 +846,7 @@ export default function AdminBookingPage() {
                       type="date"
                       value={vacationStart}
                       onChange={(e) => setVacationStart(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white"
+                      className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-base sm:text-sm text-white [color-scheme:dark]"
                       required
                     />
                   </div>
@@ -856,7 +859,7 @@ export default function AdminBookingPage() {
                       type="date"
                       value={vacationEnd}
                       onChange={(e) => setVacationEnd(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white"
+                      className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-base sm:text-sm text-white [color-scheme:dark]"
                       required
                     />
                   </div>
@@ -866,9 +869,9 @@ export default function AdminBookingPage() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md disabled:opacity-50"
+                    className="min-h-[44px] w-full py-2.5 px-4 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md disabled:opacity-50"
                   >
-                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Palmtree className="w-3.5 h-3.5" />}
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Palmtree className="w-4 h-4" />}
                     <span>Закрыть период каникул</span>
                   </button>
 
@@ -876,7 +879,7 @@ export default function AdminBookingPage() {
                     type="button"
                     onClick={handleClearVacationRange}
                     disabled={saving || !vacationStart || !vacationEnd}
-                    className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs font-medium transition-colors disabled:opacity-40"
+                    className="min-h-[44px] w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs sm:text-sm font-semibold transition-colors disabled:opacity-40"
                   >
                     Снять блокировку с этого периода
                   </button>
@@ -953,13 +956,13 @@ export default function AdminBookingPage() {
                   type="button"
                   onClick={() => selectedCalendarDate && handleToggleCalendarDate(selectedCalendarDate)}
                   disabled={saving}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 ${
+                  className={`min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all border flex items-center justify-center gap-2 w-full sm:w-auto ${
                     isSelectedDateDayOff
                       ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                       : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30'
                   }`}
                 >
-                  <Power className="w-3.5 h-3.5" />
+                  <Power className="w-4 h-4" />
                   <span>{isSelectedDateDayOff ? 'Открыть этот день для записи' : 'Сделать день выходным'}</span>
                 </button>
               </div>
@@ -1010,10 +1013,10 @@ export default function AdminBookingPage() {
                               <span className="block text-zinc-400 font-medium">✓ Бокс свободен в течение смены</span>
                               <Link
                                 href={`/admin/orders?newOrder=1&date=${selectedCalendarDate}&workbayId=${bay.id}`}
-                                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600/15 hover:bg-sky-600 text-sky-400 hover:text-white border border-sky-500/30 text-xs font-bold transition-all"
+                                className="min-h-[44px] inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600/15 hover:bg-sky-600 text-sky-400 hover:text-white border border-sky-500/30 text-xs sm:text-sm font-bold transition-all w-full sm:w-auto"
                               >
-                                <Plus className="w-3.5 h-3.5" />
-                                <span>+ Записать в бокс</span>
+                                <Plus className="w-4 h-4" />
+                                <span>+ Записать в этот бокс</span>
                               </Link>
                             </div>
                           ) : (
@@ -1055,13 +1058,13 @@ export default function AdminBookingPage() {
                                 </div>
                               ))}
 
-                              {/* Кнопка быстрой записи в бокс */}
+                              {/* Кнопка быстрой записи в бокс (Mobile-First 44px) */}
                               <Link
                                 href={`/admin/orders?newOrder=1&date=${selectedCalendarDate}&workbayId=${bay.id}`}
-                                className="w-full py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                                className="min-h-[44px] w-full py-2.5 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-zinc-200 hover:text-white border border-zinc-800 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors"
                               >
-                                <Plus className="w-3.5 h-3.5 text-sky-400" />
-                                <span>+ Записать в бокс</span>
+                                <Plus className="w-4 h-4 text-sky-400" />
+                                <span>+ Записать в этот бокс</span>
                               </Link>
 
                               {/* Отменённые бронирования (освобожденные слоты) */}
@@ -1252,7 +1255,7 @@ export default function AdminBookingPage() {
                     value={bayForm.name}
                     onChange={(e) => setBayForm({ ...bayForm, name: e.target.value })}
                     placeholder="напр. Бокс №1 (Мокрый / Экстракция)"
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white text-xs font-semibold focus:border-sky-500 outline-none"
+                    className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-white text-base sm:text-sm font-semibold focus:border-sky-500 outline-none"
                   />
                 </div>
 
@@ -1263,7 +1266,7 @@ export default function AdminBookingPage() {
                   <select
                     value={bayForm.type}
                     onChange={(e) => setBayForm({ ...bayForm, type: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white text-xs font-semibold focus:border-sky-500 outline-none"
+                    className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-white text-base sm:text-sm font-semibold focus:border-sky-500 outline-none"
                   >
                     <option value="universal">Универсальный детейлинг</option>
                     <option value="wet">Мокрый бокс (мойка/экстракция)</option>
@@ -1282,12 +1285,12 @@ export default function AdminBookingPage() {
                   value={bayForm.description}
                   onChange={(e) => setBayForm({ ...bayForm, description: e.target.value })}
                   placeholder="напр. Трап слива, АВД, контурный свет CRI 95+, турбосушка"
-                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white text-xs focus:border-sky-500 outline-none"
+                  className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-white text-base sm:text-sm focus:border-sky-500 outline-none"
                 />
               </div>
 
-              <div className="flex items-center justify-between pt-2">
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-zinc-300">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                <label className="flex items-center gap-2 cursor-pointer text-xs sm:text-sm font-semibold text-zinc-300">
                   <input
                     type="checkbox"
                     checked={bayForm.isActive}
@@ -1301,16 +1304,16 @@ export default function AdminBookingPage() {
                   <button
                     type="button"
                     onClick={() => setIsEditingBay(false)}
-                    className="px-3.5 py-1.5 rounded-xl border border-zinc-700 text-zinc-300 hover:bg-zinc-800 text-xs font-semibold"
+                    className="min-h-[44px] px-4 py-2 rounded-xl border border-zinc-700 text-zinc-300 hover:bg-zinc-800 text-xs sm:text-sm font-semibold"
                   >
                     Отмена
                   </button>
                   <button
                     type="submit"
                     disabled={saving}
-                    className="px-4 py-1.5 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 font-semibold text-xs flex items-center gap-1.5 transition-all shadow-sm disabled:opacity-50"
+                    className="min-h-[44px] px-5 py-2 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50"
                   >
-                    {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {saving && <Loader2 className="w-4 h-4 animate-spin" />}
                     <span>Сохранить</span>
                   </button>
                 </div>

@@ -38,7 +38,8 @@ import {
   LayoutGrid,
   List,
   Star,
-  Sparkles
+  Sparkles,
+  Edit3
 } from 'lucide-react';
 
 interface DamageItem {
@@ -137,6 +138,37 @@ function getLocalDateString(d: Date = new Date()): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function formatEntryDateTime(raw?: string | null): string {
+  if (!raw) return 'Время не согласовано';
+  try {
+    const cleaned = raw.replace('T', ' ');
+    const [datePart, timePart] = cleaned.split(' ');
+    if (datePart && /^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+      const [y, m, d] = datePart.split('-').map(Number);
+      const months = ['янв.', 'февр.', 'марта', 'апр.', 'мая', 'июня', 'июля', 'авг.', 'сент.', 'окт.', 'нояб.', 'дек.'];
+      const monthStr = months[m - 1] || '';
+      let timeStr = '10:00';
+      if (timePart) {
+        const timeMatch = timePart.match(/^(\d{2}:\d{2})/);
+        if (timeMatch) timeStr = timeMatch[1];
+      }
+      return `${d} ${monthStr} в ${timeStr}`;
+    }
+    const dObj = new Date(raw);
+    if (!isNaN(dObj.getTime())) {
+      const d = dObj.getDate();
+      const months = ['янв.', 'февр.', 'марта', 'апр.', 'мая', 'июня', 'июля', 'авг.', 'сент.', 'окт.', 'нояб.', 'дек.'];
+      const monthStr = months[dObj.getMonth()];
+      const hours = String(dObj.getHours()).padStart(2, '0');
+      const mins = String(dObj.getMinutes()).padStart(2, '0');
+      return `${d} ${monthStr} в ${hours}:${mins}`;
+    }
+    return raw;
+  } catch {
+    return raw;
+  }
 }
 
 export default function AdminOrdersPage() {
@@ -621,7 +653,7 @@ export default function AdminOrdersPage() {
             className="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs shadow-md shadow-sky-600/20 active:scale-95 transition-all flex items-center gap-2 self-start sm:self-auto shrink-0"
           >
             <Plus className="w-4 h-4" />
-            <span>+ Новая запись</span>
+            <span>Новая запись</span>
           </button>
         </div>
 
@@ -1001,73 +1033,107 @@ export default function AdminOrdersPage() {
             });
 
             const statusColors: Record<string, string> = {
-              new: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
-              agreed: 'bg-sky-500/10 text-sky-400 border-sky-500/30',
-              in_progress: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
-              completed: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-              cancelled: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+              new: 'bg-amber-500/15 text-amber-300 border-amber-500/35',
+              agreed: 'bg-sky-500/15 text-sky-300 border-sky-500/35',
+              in_progress: 'bg-purple-500/15 text-purple-300 border-purple-500/35',
+              completed: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35',
+              cancelled: 'bg-rose-500/15 text-rose-300 border-rose-500/35',
             };
 
             const statusLabels: Record<string, string> = {
-              new: 'Ожидает подтверждения',
-              agreed: 'Запись подтверждена',
-              in_progress: 'В работе в боксе',
-              completed: 'Готов / Выполнен',
-              cancelled: 'Отменена',
+              new: 'Новый',
+              agreed: 'Подтверждён',
+              in_progress: 'В боксе',
+              completed: 'Готов к выдаче',
+              cancelled: 'Отменён',
             };
+
+            const cleanPhone = (order.clientPhone || '').replace(/\D/g, '');
+            const clientMsg = `Здравствуйте, ${order.clientName}! Вас беспокоит студия детейлинга ${settings.shortName || 'DetailingHub'}. По поводу вашей записи #${order.id.slice(-6).toUpperCase()} (${order.carBrandModel}): `;
+
+            const otherVisits = orders.filter(
+              (other) =>
+                other.id !== order.id &&
+                (other.status === 'completed' || other.isPaid) &&
+                (other.clientPhone || '').replace(/\D/g, '') === cleanPhone
+            );
 
             return (
               <div
                 key={order.id}
-                className="p-5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-zinc-700/80 transition-all space-y-4"
+                className="p-4 sm:p-5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-zinc-700/80 transition-all space-y-3.5"
               >
-                {/* Верхняя строка карточки */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center flex-wrap gap-2.5">
-                    <span className="font-mono text-xs text-zinc-400 font-semibold">
-                      #{order.id.slice(-6).toUpperCase()}
-                    </span>
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                        statusColors[order.status]
-                      }`}
-                    >
-                      {statusLabels[order.status]}
-                    </span>
-
-                    {/* Госномер и пробег */}
-                    {order.carLicensePlate && (
-                      <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-700 text-[11px] font-mono font-bold text-white tracking-wider">
-                        {order.carLicensePlate}
-                      </span>
-                    )}
-                    {order.mileage != null && order.mileage > 0 && (
-                      <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px] font-mono text-zinc-400">
-                        {order.mileage.toLocaleString('ru-RU')} км
-                      </span>
-                    )}
-
-                    {/* Источник заявки */}
+                {/* Мета-строка (Уровень 3): Номер, Источник, Дата заявки */}
+                <div className="flex items-center justify-between text-[11px] text-zinc-500 gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-medium">#{order.id.slice(-6).toUpperCase()}</span>
+                    <span>•</span>
                     {renderSourceBadge(order.source)}
-
-                    {/* Статус акта приёмки */}
-                    {order.actCompletedAt ? (
-                      <span className="px-2 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[10px] font-semibold text-emerald-400 flex items-center gap-1">
+                    {order.actCompletedAt && (
+                      <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/25 text-[10px] font-semibold text-emerald-400 flex items-center gap-1">
                         <ShieldCheck className="w-3 h-3" />
                         <span>Акт оформлен</span>
                       </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-500">
-                        Акт не зафиксирован
+                    )}
+                  </div>
+                  <span className="font-mono">{formattedDate}</span>
+                </div>
+
+                {/* Главный блок (Уровень 1): Автомобиль, Госномер, Статус */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-base sm:text-lg font-extrabold text-white">
+                      {order.carBrandModel}
+                    </span>
+                    {order.carClass && (
+                      <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300 font-bold">
+                        Класс {order.carClass}
                       </span>
                     )}
+                    {order.carLicensePlate && (
+                      <span className="px-2 py-0.5 rounded-lg bg-black/60 border border-white/10 text-white font-mono font-bold text-xs tracking-wider">
+                        {order.carLicensePlate}
+                      </span>
+                    )}
+                  </div>
 
-                    {/* Статус оплаты в студии (Нал / Карта / СБП) */}
+                  <span
+                    className={`self-start sm:self-auto px-3 py-1 rounded-xl text-xs font-bold border ${
+                      statusColors[order.status]
+                    }`}
+                  >
+                    {statusLabels[order.status]}
+                  </span>
+                </div>
+
+                {/* Плашка времени и цены (Сразу под заголовком) */}
+                <div className="p-3 sm:p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5 text-sm sm:text-base font-bold text-sky-300">
+                      <Calendar className="w-4 h-4 text-sky-400 shrink-0" />
+                      <span>
+                        {formatEntryDateTime(order.agreedEntryDateTime || (order.desiredDate ? `${order.desiredDate} ${order.desiredTime || ''}` : null))}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                      <MapPin className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                      <span>
+                        {order.serviceFormat === 'mobile'
+                          ? (order.deliveryAddress || 'Выезд за пределы города')
+                          : (order.booking?.workbay?.name ? `В боксе «${order.booking.workbay.name}»` : 'В студии')}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800/60">
+                    <span className="text-lg font-black text-white font-mono">
+                      {(order.agreedFinalPrice || order.preliminaryTotal).toLocaleString('ru-RU')} ₽
+                    </span>
                     <span
-                      className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
                         order.isPaid
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                          : 'bg-zinc-900 text-zinc-500 border-zinc-800'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-amber-500/15 text-amber-300 border-amber-500/40'
                       }`}
                     >
                       {order.isPaid
@@ -1080,230 +1146,105 @@ export default function AdminOrdersPage() {
                           })`
                         : 'Не оплачен'}
                     </span>
-
-                    <span className="text-[11px] text-zinc-500 font-mono">
-                      {formattedDate}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <span className="text-base font-bold text-white font-mono">
-                      {(order.agreedFinalPrice || order.preliminaryTotal).toLocaleString('ru-RU')} ₽
-                    </span>
                   </div>
                 </div>
 
-                {/* Основные данные клиента и услуг */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-zinc-800/60 text-xs">
-                  {/* Клиент */}
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1.5 text-white font-medium">
-                      <User className="w-3.5 h-3.5 text-zinc-400" />
+                {/* Блок клиента и услуг */}
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-zinc-200">
+                      <User className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                       <span>{order.clientName}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-zinc-400">
-                      <Phone className="w-3.5 h-3.5 text-zinc-500" />
                       <a
                         href={`tel:${order.clientPhone}`}
-                        className="hover:text-sky-400 font-mono transition-colors"
+                        className="text-zinc-400 hover:text-sky-400 font-mono text-xs font-normal ml-1"
                       >
-                        {order.clientPhone}
+                        ({order.clientPhone})
                       </a>
                     </div>
 
-                    {/* История клиента по номеру телефона */}
-                    {(() => {
-                      const cleanPhone = (order.clientPhone || '').replace(/\D/g, '');
-                      const otherVisits = orders.filter(
-                        (other) =>
-                          other.id !== order.id &&
-                          (other.status === 'completed' || other.isPaid) &&
-                          (other.clientPhone || '').replace(/\D/g, '') === cleanPhone
-                      );
-                      if (otherVisits.length > 0) {
-                        return (
-                          <div className="pt-0.5">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 border border-amber-500/30 text-amber-400">
-                              <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />
-                              <span>Постоянный клиент • Визитов: {otherVisits.length}</span>
-                              {otherVisits[0]?.carBrandModel && (
-                                <span className="text-amber-300/80 truncate max-w-[120px]">
-                                  • {otherVisits[0].carBrandModel}
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                    <div className="flex items-center gap-1.5 text-zinc-400">
-                      <Car className="w-3.5 h-3.5 text-zinc-500" />
-                      <span>{order.carBrandModel}</span>
-                      {order.carClass && (
-                        <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-[10px] text-zinc-300 font-bold">
-                          Класс {order.carClass}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Локация и согласованное время */}
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1.5 text-zinc-300">
-                      <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                      <span className="font-semibold text-white">
-                        {order.agreedEntryDateTime
-                          ? `Заезд: ${order.agreedEntryDateTime}`
-                          : order.desiredDate
-                          ? `Запрос: ${order.desiredDate} ${order.desiredTime || ''}`
-                          : 'Время не согласовано'}
+                    {otherVisits.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                        <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />
+                        <span>Постоянный клиент ({otherVisits.length})</span>
                       </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-zinc-400 truncate">
-                      <MapPin className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                      <span className="truncate">
-                        {order.serviceFormat === 'mobile'
-                          ? (order.deliveryAddress || 'Выезд за пределы города')
-                          : `В студии (${settings.city}, ${settings.address})`}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Услуги, заметка мастера и 3 фото-блока */}
-                  <div className="space-y-1.5">
-                    <div className="text-zinc-300 font-medium line-clamp-2">
-                      {order.items?.map((i) => i.name).join(', ') || 'Комплекс услуг'}
-                    </div>
-
-                    {order.privateStudioNote && (
-                      <div className="p-1.5 rounded-lg bg-zinc-900/90 border border-amber-500/20 text-[11px] text-amber-300/90 leading-relaxed">
-                        <span className="text-amber-400 font-bold mr-1">Мастер:</span>
-                        <span>{order.privateStudioNote}</span>
-                      </div>
                     )}
+                  </div>
 
-                    {/* 3 фото-блока: Клиент, До, После */}
-                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[11px]">
-                      {order.photos && order.photos.length > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/20 text-sky-400 font-medium">
-                          <Camera className="w-3 h-3" />
-                          <span>Клиент: {order.photos.length}</span>
-                        </span>
-                      )}
-                      {order.inspectionPhotosBefore && order.inspectionPhotosBefore.length > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 font-medium">
-                          <Camera className="w-3 h-3" />
-                          <span>До: {order.inspectionPhotosBefore.length}</span>
-                        </span>
-                      )}
-                      {order.inspectionPhotosAfter && order.inspectionPhotosAfter.length > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium">
-                          <Camera className="w-3 h-3" />
-                          <span>После: {order.inspectionPhotosAfter.length}</span>
-                        </span>
-                      )}
+                  <div className="text-zinc-300 line-clamp-2">
+                    {order.items?.map((i) => i.name).join(', ') || 'Комплекс услуг'}
+                  </div>
+
+                  {order.privateStudioNote && (
+                    <div className="p-2 rounded-xl bg-zinc-900 border border-amber-500/25 text-xs text-amber-300/90 leading-relaxed">
+                      <span className="text-amber-400 font-bold mr-1">Заметка мастера:</span>
+                      <span>{order.privateStudioNote}</span>
                     </div>
+                  )}
+
+                  {/* Бейджи фото */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[11px]">
+                    {order.photos && order.photos.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/20 text-sky-400 font-medium">
+                        <Camera className="w-3 h-3" />
+                        <span>Клиент: {order.photos.length}</span>
+                      </span>
+                    )}
+                    {order.inspectionPhotosBefore && order.inspectionPhotosBefore.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 font-medium">
+                        <Camera className="w-3 h-3" />
+                        <span>До: {order.inspectionPhotosBefore.length}</span>
+                      </span>
+                    )}
+                    {order.inspectionPhotosAfter && order.inspectionPhotosAfter.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium">
+                        <Camera className="w-3 h-3" />
+                        <span>После: {order.inspectionPhotosAfter.length}</span>
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                {/* Нижняя панель действий */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-zinc-800/60">
-                  <div className="flex items-center flex-wrap gap-2">
-                    <a
-                      href={`/order/${order.token}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] text-zinc-400 hover:text-white transition-colors mr-1"
-                    >
-                      <span>Ссылка клиента</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
+                {/* Кнопки действий внизу карточки (Mobile-First 44px) */}
+                <div className="grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-2 pt-3 border-t border-zinc-800/60">
+                  <a
+                    href={`tel:${order.clientPhone}`}
+                    className="min-h-[44px] px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                  >
+                    <Phone className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Позвонить</span>
+                  </a>
 
-                    {/* Кнопки быстрой связи в 1 клик (WhatsApp / Telegram) */}
-                    {(() => {
-                      const cleanPhone = (order.clientPhone || '').replace(/\D/g, '');
-                      const clientMsg = `Здравствуйте, ${order.clientName}! Вас беспокоит студия детейлинга ${settings.shortName || 'DetailingHub'}. По поводу вашей записи #${order.id.slice(-6).toUpperCase()} (${order.carBrandModel}): `;
-                      return (
-                        <div className="flex items-center gap-1.5">
-                          <a
-                            href={`https://wa.me/${cleanPhone}?text=${encodeURIComponent(clientMsg)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 text-[11px] font-semibold flex items-center gap-1 transition-all"
-                            title="Открыть чат в WhatsApp с клиентом"
-                          >
-                            <Send className="w-3 h-3 text-emerald-400" />
-                            <span>WhatsApp</span>
-                          </a>
+                  <a
+                    href={`https://wa.me/${cleanPhone}?text=${encodeURIComponent(clientMsg)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-h-[44px] px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                    title="Открыть чат в WhatsApp с клиентом"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>WhatsApp</span>
+                  </a>
 
-                          <a
-                            href={`https://t.me/+${cleanPhone}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-2 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/25 text-[11px] font-semibold flex items-center gap-1 transition-all"
-                            title="Открыть чат в Telegram с клиентом"
-                          >
-                            <Send className="w-3 h-3 text-sky-400" />
-                            <span>Telegram</span>
-                          </a>
-                        </div>
-                      );
-                    })()}
-                  </div>
+                  <a
+                    href={`https://t.me/+${cleanPhone}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-h-[44px] px-3.5 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 border border-sky-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                    title="Открыть чат в Telegram с клиентом"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Telegram</span>
+                  </a>
 
-                  <div className="flex items-center gap-2">
-                    {order.status === 'new' && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => handleQuickStatusChange(order.id, 'agreed')}
-                          className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Подтвердить</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleQuickStatusChange(order.id, 'cancelled')}
-                          className="px-2.5 py-1.5 rounded-xl text-xs text-rose-400 hover:bg-rose-500/10 transition-colors"
-                        >
-                          Отклонить
-                        </button>
-                      </>
-                    )}
-
-                    {order.status === 'agreed' && (
-                      <button
-                        type="button"
-                        onClick={() => handleQuickStatusChange(order.id, 'in_progress')}
-                        className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>В работу в бокс</span>
-                      </button>
-                    )}
-
-                    {order.status === 'in_progress' && (
-                      <button
-                        type="button"
-                        onClick={() => handleQuickStatusChange(order.id, 'completed')}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
-                      >
-                        <CheckCheck className="w-3.5 h-3.5" />
-                        <span>Готов к выдаче</span>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => handleOpenOrder(order)}
-                      className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium flex items-center gap-1 transition-colors"
-                    >
-                      <span>Управление заказом</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenOrder(order)}
+                    className="col-span-2 sm:col-span-1 min-h-[44px] px-4 py-2 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 text-xs font-bold flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Открыть заказ</span>
+                  </button>
                 </div>
               </div>
             );
@@ -1313,515 +1254,517 @@ export default function AdminOrdersPage() {
 
       {/* 4. МОДАЛЬНОЕ ОКНО УПРАВЛЕНИЯ ЗАКАЗОМ, АКТА И P&L */}
       {activeOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-3xl bg-zinc-950 border border-zinc-800 rounded-3xl p-5 sm:p-7 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-t-3xl sm:rounded-3xl max-h-[95vh] flex flex-col shadow-2xl overflow-hidden">
             
-            {/* Шапка модалки */}
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
-              <div>
-                <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+            {/* Шапка модалки (Sticky Top) */}
+            <div className="sticky top-0 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 px-4 py-3 sm:px-6 sm:py-4 z-20 flex items-center justify-between shrink-0">
+              <div className="min-w-0 pr-2">
+                <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2 truncate">
                   <span>Заказ #{activeOrder.id.slice(-6).toUpperCase()}</span>
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-700 text-zinc-300 font-normal">
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-700 text-zinc-300 font-normal truncate">
                     {activeOrder.carBrandModel}
                   </span>
                 </h3>
-                <span className="text-xs text-zinc-400 mt-0.5 block">
+                <span className="text-xs text-zinc-400 mt-0.5 block truncate">
                   Клиент: {activeOrder.clientName} ({activeOrder.clientPhone})
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <a
                   href={`/order/${activeOrder.token}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  className="min-h-[40px] px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 text-xs font-semibold flex items-center gap-1.5 transition-colors"
                   title="Открыть официальный бланк заказ-наряда А4"
                 >
                   <FileText className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>Печать А4</span>
+                  <span className="hidden sm:inline">Печать А4</span>
                   <ExternalLink className="w-3 h-3 text-zinc-500" />
                 </a>
                 <button
                   type="button"
                   onClick={() => setActiveOrder(null)}
-                  className="p-1 rounded-lg text-zinc-400 hover:text-white transition-colors"
+                  className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            {/* 1. СТАТУС ЗАКАЗА — СЕГМЕНТИРОВАННЫЙ ПЕРЕКЛЮЧАТЕЛЬ НАВЕРХУ */}
-            <div className="space-y-1.5">
-              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
-                Статус записи
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1 rounded-2xl bg-zinc-900 border border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => handleStatusSelect('new')}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    editStatus === 'new'
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-500/10'
-                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${editStatus === 'new' ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
-                  <span>Новый</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleStatusSelect('agreed')}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    editStatus === 'agreed'
-                      ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm shadow-sky-500/10'
-                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${editStatus === 'agreed' ? 'bg-sky-400' : 'bg-zinc-600'}`} />
-                  <span>Подтверждён</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleStatusSelect('in_progress')}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    editStatus === 'in_progress'
-                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm shadow-purple-500/10'
-                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${editStatus === 'in_progress' ? 'bg-purple-400' : 'bg-zinc-600'}`} />
-                  <span>В боксе</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleStatusSelect('completed')}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    editStatus === 'completed'
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/10'
-                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${editStatus === 'completed' ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
-                  <span>Готов к выдаче</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleStatusSelect('cancelled')}
-                  className={`col-span-2 sm:col-span-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    editStatus === 'cancelled'
-                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-500/10'
-                      : 'text-zinc-400 hover:text-rose-400 hover:bg-zinc-800/60'
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${editStatus === 'cancelled' ? 'bg-rose-400' : 'bg-zinc-600'}`} />
-                  <span>Отменён</span>
-                </button>
-              </div>
-            </div>
-
-            {/* БАННЕР ЕСЛИ СТАТУС ОТМЕНЁН */}
-            {editStatus === 'cancelled' && (
-              <div className="p-3.5 rounded-2xl bg-rose-950/20 border border-rose-900/40 text-xs text-rose-300 space-y-1">
-                <div className="font-bold text-rose-400 flex items-center gap-1.5">
-                  <Ban className="w-4 h-4" />
-                  <span>Заказ отменён {activeOrder.cancelledAt ? new Date(activeOrder.cancelledAt).toLocaleString('ru-RU') : ''}</span>
-                </div>
-                <p className="text-zinc-400">
-                  <strong>Инициатор:</strong> {activeOrder.cancelledBy === 'client' ? 'Клиент через сайт' : 'Администратор студии'}
-                  {(editCancelReason || activeOrder.cancelReason) && (
-                    <span className="block mt-0.5">
-                      <strong>Причина:</strong> {editCancelReason || activeOrder.cancelReason}
-                    </span>
-                  )}
-                </p>
-              </div>
-            )}
-
-            {/* 2. ВКЛАДКИ: «Основное и оплата» и «Фотоотчёт» */}
-            <div className="flex items-center gap-2 border-b border-zinc-800 pb-2">
-              <button
-                type="button"
-                onClick={() => setModalTab('main')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                  modalTab === 'main'
-                    ? 'bg-white text-zinc-950 shadow-md'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Основное и оплата</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setModalTab('photos')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                  modalTab === 'photos'
-                    ? 'bg-white text-zinc-950 shadow-md'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
-                }`}
-              >
-                <Camera className="w-3.5 h-3.5" />
-                <span>Фотоотчёт</span>
-                <span
-                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
-                    modalTab === 'photos' ? 'bg-zinc-900 text-white' : 'bg-zinc-800 text-zinc-300'
-                  }`}
-                >
-                  {(activeOrder.photos?.length || 0) + photosBefore.length + photosAfter.length}
+            {/* Прокручиваемое тело модалки */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+              {/* 1. СТАТУС ЗАКАЗА — СЕГМЕНТИРОВАННЫЙ ПЕРЕКЛЮЧАТЕЛЬ НАВЕРХУ */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
+                  Статус записи
                 </span>
-              </button>
-            </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1 rounded-2xl bg-zinc-900 border border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => handleStatusSelect('new')}
+                    className={`min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                      editStatus === 'new'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-500/10'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${editStatus === 'new' ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
+                    <span>Новый</span>
+                  </button>
 
-            {/* 3. ВКЛАДКА 1: ОСНОВНОЕ И ОПЛАТА */}
-            {modalTab === 'main' && (
-              <div className="space-y-5">
-                {/* Состав услуг */}
-                <div className="space-y-2">
-                  <span className="text-[11px] font-semibold text-zinc-400 block uppercase tracking-wider">
-                    Выбранные услуги ({activeOrder.items?.length || 0})
-                  </span>
-                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                    {activeOrder.items?.map((it, idx) => (
-                      <div
-                        key={idx}
-                        className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between text-xs"
-                      >
-                        <div>
-                          <span className="text-zinc-200 font-medium">
-                            {it.name} {it.quantity > 1 ? `x${it.quantity}` : ''}
-                          </span>
-                          {it.customDescription && (
-                            <span className="text-[11px] text-sky-400 block">{it.customDescription}</span>
-                          )}
-                        </div>
-                        <span className="font-mono font-semibold text-white">
-                          {it.itemTotal?.toLocaleString('ru-RU')} ₽
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                  <button
+                    type="button"
+                    onClick={() => handleStatusSelect('agreed')}
+                    className={`min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                      editStatus === 'agreed'
+                        ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm shadow-sky-500/10'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${editStatus === 'agreed' ? 'bg-sky-400' : 'bg-zinc-600'}`} />
+                    <span>Подтверждён</span>
+                  </button>
 
-                {/* Чистая сетка 2 колонки */}
-                <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-4">
-                  <span className="text-[11px] font-semibold text-zinc-300 block uppercase tracking-wider">
-                    Параметры заезда и сумма
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleStatusSelect('in_progress')}
+                    className={`min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                      editStatus === 'in_progress'
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm shadow-purple-500/10'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${editStatus === 'in_progress' ? 'bg-purple-400' : 'bg-zinc-600'}`} />
+                    <span>В боксе</span>
+                  </button>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
-                    {/* Строка 1, колонка 1: Дата заезда */}
-                    <div>
-                      <label className="block text-zinc-400 mb-1 font-medium">
-                        Дата заезда
-                      </label>
-                      <input
-                        id="agreed-entry-slot-input"
-                        type="date"
-                        value={editSlotDate}
-                        onChange={(e) => setEditSlotDate(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500 [color-scheme:dark]"
-                      />
-                    </div>
+                  <button
+                    type="button"
+                    onClick={() => handleStatusSelect('completed')}
+                    className={`min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                      editStatus === 'completed'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/10'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${editStatus === 'completed' ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+                    <span>Готов к выдаче</span>
+                  </button>
 
-                    {/* Строка 1, колонка 2: Время заезда */}
-                    <div>
-                      <label className="block text-zinc-400 mb-1 font-medium">
-                        Время заезда
-                      </label>
-                      <input
-                        type="time"
-                        value={editSlotTime}
-                        onChange={(e) => setEditSlotTime(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500 [color-scheme:dark]"
-                      />
-                    </div>
-
-                    {/* Строка 2, колонка 1: Итоговая сумма */}
-                    <div>
-                      <label className="block text-zinc-400 mb-1 font-medium">
-                        Итоговая сумма (₽)
-                      </label>
-                      <input
-                        type="number"
-                        value={editPrice}
-                        onChange={(e) => setEditPrice(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500"
-                      />
-                    </div>
-
-                    {/* Строка 2, колонка 2: Госномер авто */}
-                    <div>
-                      <label className="block text-zinc-400 mb-1 font-medium">
-                        Госномер авто
-                      </label>
-                      <input
-                        type="text"
-                        value={editPlate}
-                        onChange={(e) => setEditPlate(e.target.value.toUpperCase())}
-                        placeholder="А777АА 777"
-                        className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono font-bold text-xs focus:outline-none focus:border-sky-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Панель «Оплата в студии» с быстрыми кнопками */}
-                  <div className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <span className="block text-zinc-200 font-bold text-xs">Оплата в студии</span>
-                        <span className="text-[11px] text-zinc-400">Способ расчёта и статус оплаты</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsPaid(!isPaid)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 self-start sm:self-auto ${
-                          isPaid
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                            : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white'
-                        }`}
-                      >
-                        <CheckCircle2 className={`w-3.5 h-3.5 ${isPaid ? 'text-emerald-400' : 'text-zinc-500'}`} />
-                        <span>{isPaid ? '✓ Оплачено' : 'Не оплачен'}</span>
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-1 border-t border-zinc-900 flex-wrap">
-                      <span className="text-[11px] text-zinc-400 mr-1">Способ:</span>
-                      <button
-                        type="button"
-                        onClick={() => setEditPaymentMethod('cash')}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                          editPaymentMethod === 'cash'
-                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
-                            : 'bg-zinc-900 text-zinc-400 hover:text-white'
-                        }`}
-                      >
-                        💵 Наличные
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditPaymentMethod('card')}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                          editPaymentMethod === 'card'
-                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
-                            : 'bg-zinc-900 text-zinc-400 hover:text-white'
-                        }`}
-                      >
-                        💳 Карта
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditPaymentMethod('sbp')}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                          editPaymentMethod === 'sbp'
-                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
-                            : 'bg-zinc-900 text-zinc-400 hover:text-white'
-                        }`}
-                      >
-                        📱 СБП
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Поле «Заметка для мастеров» */}
-                  <div>
-                    <label className="block text-zinc-400 mb-1 font-medium text-xs">
-                      Заметка для мастеров (не видна клиенту)
-                    </label>
-                    <textarea
-                      value={editNote}
-                      onChange={(e) => setEditNote(e.target.value)}
-                      placeholder="Особенности автомобиля, пожелания клиента, код домофона..."
-                      rows={2}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white text-xs resize-none focus:outline-none focus:border-sky-500"
-                    />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleStatusSelect('cancelled')}
+                    className={`col-span-2 sm:col-span-1 min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                      editStatus === 'cancelled'
+                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-500/10'
+                        : 'text-zinc-400 hover:text-rose-400 hover:bg-zinc-800/60'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${editStatus === 'cancelled' ? 'bg-rose-400' : 'bg-zinc-600'}`} />
+                    <span>Отменён</span>
+                  </button>
                 </div>
               </div>
-            )}
 
-            {/* 4. ВКЛАДКА 2: ФОТООТЧЁТ */}
-            {modalTab === 'photos' && (
-              <div className="space-y-4">
-                {/* Фото клиента при заявке */}
-                <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-white text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                      <Camera className="w-3.5 h-3.5 text-sky-400" />
-                      Фото клиента при заявке ({activeOrder.photos?.length || 0})
-                    </span>
+              {/* БАННЕР ЕСЛИ СТАТУС ОТМЕНЁН */}
+              {editStatus === 'cancelled' && (
+                <div className="p-3.5 rounded-2xl bg-rose-950/20 border border-rose-900/40 text-xs text-rose-300 space-y-1">
+                  <div className="font-bold text-rose-400 flex items-center gap-1.5">
+                    <Ban className="w-4 h-4" />
+                    <span>Заказ отменён {activeOrder.cancelledAt ? new Date(activeOrder.cancelledAt).toLocaleString('ru-RU') : ''}</span>
                   </div>
+                  <p className="text-zinc-400">
+                    <strong>Инициатор:</strong> {activeOrder.cancelledBy === 'client' ? 'Клиент через сайт' : 'Администратор студии'}
+                    {(editCancelReason || activeOrder.cancelReason) && (
+                      <span className="block mt-0.5">
+                        <strong>Причина:</strong> {editCancelReason || activeOrder.cancelReason}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              )}
 
-                  {activeOrder.photos && activeOrder.photos.length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                      {activeOrder.photos.map((p) => (
-                        <a
-                          key={p.id}
-                          href={`/api/photos/${p.id}?token=${activeOrder.token}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="aspect-video rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 block group relative"
+              {/* 2. ВКЛАДКИ: «Основное и оплата» и «Фотоотчёт» (Mobile-First 44px) */}
+              <div className="grid grid-cols-2 gap-2 border-b border-zinc-800 pb-3">
+                <button
+                  type="button"
+                  onClick={() => setModalTab('main')}
+                  className={`min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                    modalTab === 'main'
+                      ? 'bg-white text-zinc-950 shadow-md'
+                      : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>Основное и оплата</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModalTab('photos')}
+                  className={`min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                    modalTab === 'photos'
+                      ? 'bg-white text-zinc-950 shadow-md'
+                      : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>Фотоотчёт</span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                      modalTab === 'photos' ? 'bg-zinc-900 text-white' : 'bg-zinc-800 text-zinc-300'
+                    }`}
+                  >
+                    {(activeOrder.photos?.length || 0) + photosBefore.length + photosAfter.length}
+                  </span>
+                </button>
+              </div>
+
+              {/* 3. ВКЛАДКА 1: ОСНОВНОЕ И ОПЛАТА */}
+              {modalTab === 'main' && (
+                <div className="space-y-4">
+                  {/* Состав услуг */}
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-semibold text-zinc-400 block uppercase tracking-wider">
+                      Выбранные услуги ({activeOrder.items?.length || 0})
+                    </span>
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                      {activeOrder.items?.map((it, idx) => (
+                        <div
+                          key={idx}
+                          className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between text-xs"
                         >
-                          <img
-                            src={`/api/photos/${p.id}?token=${activeOrder.token}`}
-                            alt="Фото клиента"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
-                            }}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
-                            <Eye className="w-4 h-4" />
+                          <div>
+                            <span className="text-zinc-200 font-medium">
+                              {it.name} {it.quantity > 1 ? `x${it.quantity}` : ''}
+                            </span>
+                            {it.customDescription && (
+                              <span className="text-[11px] text-sky-400 block">{it.customDescription}</span>
+                            )}
                           </div>
-                        </a>
+                          <span className="font-mono font-semibold text-white">
+                            {it.itemTotal?.toLocaleString('ru-RU')} ₽
+                          </span>
+                        </div>
                       ))}
                     </div>
-                  ) : (
-                    <div className="py-3 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
-                      Клиент не прикреплял фото к онлайн-заявке
-                    </div>
-                  )}
-                </div>
+                  </div>
 
-                {/* Фото «До» и «После» */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Фото ДО приёмки */}
+                  {/* Параметры заезда и сумма (Mobile-First 16px inputs) */}
+                  <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-4">
+                    <span className="text-[11px] font-semibold text-zinc-300 block uppercase tracking-wider">
+                      Параметры заезда и сумма
+                    </span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      {/* Строка 1, колонка 1: Дата заезда */}
+                      <div>
+                        <label className="block text-zinc-400 mb-1 font-medium text-xs">
+                          Дата заезда
+                        </label>
+                        <input
+                          id="agreed-entry-slot-input"
+                          type="date"
+                          value={editSlotDate}
+                          onChange={(e) => setEditSlotDate(e.target.value)}
+                          className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono text-base sm:text-sm focus:outline-none focus:border-sky-500 [color-scheme:dark]"
+                        />
+                      </div>
+
+                      {/* Строка 1, колонка 2: Время заезда */}
+                      <div>
+                        <label className="block text-zinc-400 mb-1 font-medium text-xs">
+                          Время заезда
+                        </label>
+                        <input
+                          type="time"
+                          value={editSlotTime}
+                          onChange={(e) => setEditSlotTime(e.target.value)}
+                          className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono text-base sm:text-sm focus:outline-none focus:border-sky-500 [color-scheme:dark]"
+                        />
+                      </div>
+
+                      {/* Строка 2, колонка 1: Итоговая сумма */}
+                      <div>
+                        <label className="block text-zinc-400 mb-1 font-medium text-xs">
+                          Итоговая сумма (₽)
+                        </label>
+                        <input
+                          type="number"
+                          value={editPrice}
+                          onChange={(e) => setEditPrice(e.target.value)}
+                          className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono text-base sm:text-sm focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+
+                      {/* Строка 2, колонка 2: Госномер авто */}
+                      <div>
+                        <label className="block text-zinc-400 mb-1 font-medium text-xs">
+                          Госномер авто
+                        </label>
+                        <input
+                          type="text"
+                          value={editPlate}
+                          onChange={(e) => setEditPlate(e.target.value.toUpperCase())}
+                          placeholder="А777АА 777"
+                          className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono font-bold text-base sm:text-sm focus:outline-none focus:border-sky-500 uppercase"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Панель «Оплата в студии» с быстрыми кнопками (Mobile-First 44px) */}
+                    <div className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div>
+                          <span className="block text-zinc-200 font-bold text-xs sm:text-sm">Оплата в студии</span>
+                          <span className="text-[11px] text-zinc-400">Способ расчёта и статус оплаты</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsPaid(!isPaid)}
+                          className={`min-h-[44px] w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                            isPaid
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                              : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white'
+                          }`}
+                        >
+                          <CheckCircle2 className={`w-4 h-4 ${isPaid ? 'text-emerald-400' : 'text-zinc-500'}`} />
+                          <span>{isPaid ? '✓ Оплачено' : 'Не оплачен'}</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-900">
+                        <button
+                          type="button"
+                          onClick={() => setEditPaymentMethod('cash')}
+                          className={`min-h-[44px] px-2 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
+                            editPaymentMethod === 'cash'
+                              ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                              : 'bg-zinc-900 text-zinc-400 hover:text-white border border-transparent'
+                          }`}
+                        >
+                          <span>💵 Наличные</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditPaymentMethod('card')}
+                          className={`min-h-[44px] px-2 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
+                            editPaymentMethod === 'card'
+                              ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                              : 'bg-zinc-900 text-zinc-400 hover:text-white border border-transparent'
+                          }`}
+                        >
+                          <span>💳 Карта</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditPaymentMethod('sbp')}
+                          className={`min-h-[44px] px-2 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
+                            editPaymentMethod === 'sbp'
+                              ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                              : 'bg-zinc-900 text-zinc-400 hover:text-white border border-transparent'
+                          }`}
+                        >
+                          <span>📱 СБП</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Поле «Заметка для мастеров» */}
+                    <div>
+                      <label className="block text-zinc-400 mb-1 font-medium text-xs">
+                        Заметка для мастеров (не видна клиенту)
+                      </label>
+                      <textarea
+                        value={editNote}
+                        onChange={(e) => setEditNote(e.target.value)}
+                        placeholder="Особенности автомобиля, пожелания клиента, код домофона..."
+                        rows={2}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-white text-base sm:text-sm resize-none focus:outline-none focus:border-sky-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 4. ВКЛАДКА 2: ФОТООТЧЁТ */}
+              {modalTab === 'photos' && (
+                <div className="space-y-4">
+                  {/* Фото клиента при заявке */}
                   <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-white text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                        <Camera className="w-3.5 h-3.5 text-amber-400" />
-                        Фото ДО приёмки ({photosBefore.length})
+                        <Camera className="w-3.5 h-3.5 text-sky-400" />
+                        Фото клиента при заявке ({activeOrder.photos?.length || 0})
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => fileInputBeforeRef.current?.click()}
-                        disabled={uploadingPhoto}
-                        className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-[11px] flex items-center gap-1 transition-colors"
-                      >
-                        <Upload className="w-3 h-3" />
-                        <span>+ Добавить</span>
-                      </button>
-                      <input
-                        ref={fileInputBeforeRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        className="hidden"
-                        onChange={(e) => handlePhotoUpload(e, 'before')}
-                      />
                     </div>
 
-                    {photosBefore.length > 0 ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        {photosBefore.map((p) => (
-                          <div key={p.id} className="relative aspect-video rounded-lg overflow-hidden border border-zinc-800 group bg-zinc-950">
+                    {activeOrder.photos && activeOrder.photos.length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        {activeOrder.photos.map((p) => (
+                          <a
+                            key={p.id}
+                            href={`/api/photos/${p.id}?token=${activeOrder.token}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="aspect-video rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 block group relative"
+                          >
                             <img
                               src={`/api/photos/${p.id}?token=${activeOrder.token}`}
-                              alt="До"
+                              alt="Фото клиента"
                               onError={(e) => {
                                 (e.target as HTMLImageElement).style.display = 'none';
                               }}
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                             />
-                            <button
-                              type="button"
-                              onClick={() => setPhotosBefore((prev) => prev.filter((item) => item.id !== p.id))}
-                              className="absolute top-1 right-1 p-1 rounded bg-black/60 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                              title="Удалить фото"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                              <Eye className="w-4 h-4" />
+                            </div>
+                          </a>
                         ))}
                       </div>
                     ) : (
                       <div className="py-3 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
-                        Нет загруженных фото «До»
+                        Клиент не прикреплял фото к онлайн-заявке
                       </div>
                     )}
                   </div>
 
-                  {/* Фото ПОСЛЕ работ */}
-                  <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-white text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                        <Camera className="w-3.5 h-3.5 text-emerald-400" />
-                        Фото ПОСЛЕ работ ({photosAfter.length})
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => fileInputAfterRef.current?.click()}
-                        disabled={uploadingPhoto}
-                        className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-[11px] flex items-center gap-1 transition-colors"
-                      >
-                        <Upload className="w-3 h-3" />
-                        <span>+ Добавить</span>
-                      </button>
-                      <input
-                        ref={fileInputAfterRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        className="hidden"
-                        onChange={(e) => handlePhotoUpload(e, 'after')}
-                      />
+                  {/* Фото «До» и «После» */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Фото ДО приёмки */}
+                    <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-white text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                          <Camera className="w-3.5 h-3.5 text-amber-400" />
+                          Фото ДО приёмки ({photosBefore.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => fileInputBeforeRef.current?.click()}
+                          disabled={uploadingPhoto}
+                          className="min-h-[36px] px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-xs flex items-center gap-1 transition-colors"
+                        >
+                          <Upload className="w-3 h-3" />
+                          <span>+ Добавить</span>
+                        </button>
+                        <input
+                          ref={fileInputBeforeRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="hidden"
+                          onChange={(e) => handlePhotoUpload(e, 'before')}
+                        />
+                      </div>
+
+                      {photosBefore.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          {photosBefore.map((p) => (
+                            <div key={p.id} className="relative aspect-video rounded-lg overflow-hidden border border-zinc-800 group bg-zinc-950">
+                              <img
+                                src={`/api/photos/${p.id}?token=${activeOrder.token}`}
+                                alt="До"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                                className="w-full h-full object-cover"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setPhotosBefore((prev) => prev.filter((item) => item.id !== p.id))}
+                                className="absolute top-1 right-1 p-1 rounded bg-black/60 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Удалить фото"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-3 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
+                          Нет загруженных фото «До»
+                        </div>
+                      )}
                     </div>
 
-                    {photosAfter.length > 0 ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        {photosAfter.map((p) => (
-                          <div key={p.id} className="relative aspect-video rounded-lg overflow-hidden border border-emerald-500/30 group bg-zinc-950">
-                            <img
-                              src={`/api/photos/${p.id}?token=${activeOrder.token}`}
-                              alt="После"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                              }}
-                              className="w-full h-full object-cover"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setPhotosAfter((prev) => prev.filter((item) => item.id !== p.id))}
-                              className="absolute top-1 right-1 p-1 rounded bg-black/60 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                              title="Удалить фото"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
+                    {/* Фото ПОСЛЕ работ */}
+                    <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-white text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                          <Camera className="w-3.5 h-3.5 text-emerald-400" />
+                          Фото ПОСЛЕ работ ({photosAfter.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => fileInputAfterRef.current?.click()}
+                          disabled={uploadingPhoto}
+                          className="min-h-[36px] px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-xs flex items-center gap-1 transition-colors"
+                        >
+                          <Upload className="w-3 h-3" />
+                          <span>+ Добавить</span>
+                        </button>
+                        <input
+                          ref={fileInputAfterRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="hidden"
+                          onChange={(e) => handlePhotoUpload(e, 'after')}
+                        />
                       </div>
-                    ) : (
-                      <div className="py-3 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
-                        Нет загруженных фото «После»
-                      </div>
-                    )}
+
+                      {photosAfter.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          {photosAfter.map((p) => (
+                            <div key={p.id} className="relative aspect-video rounded-lg overflow-hidden border border-emerald-500/30 group bg-zinc-950">
+                              <img
+                                src={`/api/photos/${p.id}?token=${activeOrder.token}`}
+                                alt="После"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                                className="w-full h-full object-cover"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setPhotosAfter((prev) => prev.filter((item) => item.id !== p.id))}
+                                className="absolute top-1 right-1 p-1 rounded bg-black/60 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Удалить фото"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-3 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
+                          Нет загруженных фото «После»
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {modalError && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
-                {modalError}
-              </div>
-            )}
+              {modalError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
+                  {modalError}
+                </div>
+              )}
 
-            {saveSuccess && (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
-                Изменения успешно сохранены
-              </div>
-            )}
+              {saveSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
+                  Изменения успешно сохранены
+                </div>
+              )}
+            </div>
 
-            {/* 5. НИЖНЯЯ ПАНЕЛЬ ДЕЙСТВИЙ */}
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
+            {/* 5. НИЖНЯЯ ПАНЕЛЬ ДЕЙСТВИЙ (Sticky Bottom, Mobile-First 44px) */}
+            <div className="sticky bottom-0 bg-zinc-950/95 backdrop-blur border-t border-zinc-800 p-4 z-20 flex items-center justify-end gap-2.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setActiveOrder(null)}
-                className="px-4 py-2 rounded-xl text-xs text-zinc-400 hover:text-white"
+                className="min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-zinc-400 hover:text-white"
               >
                 Закрыть
               </button>
@@ -1829,9 +1772,9 @@ export default function AdminOrdersPage() {
                 type="button"
                 onClick={() => handleSaveModal()}
                 disabled={savingOrder}
-                className="px-5 py-2.5 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5"
+                className="min-h-[44px] w-full sm:w-auto px-6 py-2.5 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2"
               >
-                <Save className="w-3.5 h-3.5" />
+                <Save className="w-4 h-4" />
                 <span>{savingOrder ? 'Сохранение...' : 'Сохранить изменения'}</span>
               </button>
             </div>
@@ -1840,28 +1783,28 @@ export default function AdminOrdersPage() {
       )}
       {/* 5. МОДАЛЬНОЕ ОКНО: БЫСТРОЕ СОЗДАНИЕ ЗАПИСИ АДМИНИСТРАТОРОМ */}
       {isNewOrderModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-            <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-t-3xl sm:rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
+            <div className="px-5 py-4 sm:px-6 sm:py-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center">
                   <Plus className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-sm text-white">Новая запись администратора</h3>
-                  <p className="text-[11px] text-zinc-400">Быстрое бронирование для звонков и клиентов из мессенджеров</p>
+                  <h3 className="font-extrabold text-sm sm:text-base text-white">Новая запись администратора</h3>
+                  <p className="text-[11px] text-zinc-400">Быстрое бронирование для звонков и клиентов</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsNewOrderModalOpen(false)}
-                className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
+                className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateNewOrder} className="p-6 space-y-4 overflow-y-auto flex-1">
+            <form onSubmit={handleCreateNewOrder} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
               {newOrderError && (
                 <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
@@ -1878,7 +1821,7 @@ export default function AdminOrdersPage() {
                   <button
                     type="button"
                     onClick={() => setNewSourceType('phone_admin')}
-                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left ${
+                    className={`min-h-[44px] p-2.5 rounded-xl border text-xs font-bold transition-all text-left ${
                       newSourceType === 'phone_admin'
                         ? 'bg-amber-500/15 border-amber-500/50 text-amber-300 shadow-sm'
                         : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
@@ -1890,7 +1833,7 @@ export default function AdminOrdersPage() {
                   <button
                     type="button"
                     onClick={() => setNewSourceType('owner_personal')}
-                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left ${
+                    className={`min-h-[44px] p-2.5 rounded-xl border text-xs font-bold transition-all text-left ${
                       newSourceType === 'owner_personal'
                         ? 'bg-purple-500/15 border-purple-500/50 text-purple-300 shadow-sm'
                         : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
@@ -1914,7 +1857,7 @@ export default function AdminOrdersPage() {
                     value={newClientName}
                     onChange={(e) => setNewClientName(e.target.value)}
                     placeholder="Алексей"
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white focus:outline-none focus:border-sky-500"
+                    className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-base sm:text-sm text-white focus:outline-none focus:border-sky-500"
                   />
                 </div>
                 <div>
@@ -1927,7 +1870,7 @@ export default function AdminOrdersPage() {
                     value={newClientPhone}
                     onChange={(e) => setNewClientPhone(e.target.value)}
                     placeholder="+7 (999) 000-00-00"
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                    className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-base sm:text-sm text-white font-mono focus:outline-none focus:border-sky-500"
                   />
                 </div>
               </div>
@@ -1943,7 +1886,7 @@ export default function AdminOrdersPage() {
                     value={newCarBrandModel}
                     onChange={(e) => setNewCarBrandModel(e.target.value)}
                     placeholder="BMW X5 M"
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white focus:outline-none focus:border-sky-500"
+                    className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-base sm:text-sm text-white focus:outline-none focus:border-sky-500"
                   />
                 </div>
                 <div>
@@ -1955,7 +1898,7 @@ export default function AdminOrdersPage() {
                     value={newCarLicensePlate}
                     onChange={(e) => setNewCarLicensePlate(e.target.value.toUpperCase())}
                     placeholder="А777АА777"
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white font-mono font-bold focus:outline-none focus:border-sky-500 uppercase"
+                    className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-base sm:text-sm text-white font-mono font-bold focus:outline-none focus:border-sky-500 uppercase"
                   />
                 </div>
               </div>
@@ -1969,7 +1912,7 @@ export default function AdminOrdersPage() {
                   <select
                     value={newWorkbayId}
                     onChange={(e) => setNewWorkbayId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white focus:outline-none focus:border-sky-500"
+                    className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-base sm:text-sm text-white focus:outline-none focus:border-sky-500"
                   >
                     <option value="">Без бокса</option>
                     {workbays.map((bay) => (
@@ -1987,7 +1930,7 @@ export default function AdminOrdersPage() {
                     type="date"
                     value={newDate}
                     onChange={(e) => setNewDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                    className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-base sm:text-sm text-white font-mono focus:outline-none focus:border-sky-500 [color-scheme:dark]"
                   />
                 </div>
                 <div>
@@ -1998,7 +1941,7 @@ export default function AdminOrdersPage() {
                     type="time"
                     value={newTime}
                     onChange={(e) => setNewTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                    className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-base sm:text-sm text-white font-mono focus:outline-none focus:border-sky-500 [color-scheme:dark]"
                   />
                 </div>
               </div>
@@ -2014,7 +1957,7 @@ export default function AdminOrdersPage() {
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
                     placeholder="Химчистка передних сидений + полировка фар"
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white focus:outline-none focus:border-sky-500"
+                    className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-base sm:text-sm text-white focus:outline-none focus:border-sky-500"
                   />
                 </div>
                 <div>
@@ -2025,25 +1968,25 @@ export default function AdminOrdersPage() {
                     type="number"
                     value={newPrice}
                     onChange={(e) => setNewPrice(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white font-mono font-bold focus:outline-none focus:border-sky-500"
+                    className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-base sm:text-sm text-white font-mono font-bold focus:outline-none focus:border-sky-500"
                   />
                 </div>
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-3 border-t border-zinc-800">
+              <div className="pt-2 flex items-center justify-end gap-3 border-t border-zinc-800 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsNewOrderModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-semibold"
+                  className="min-h-[44px] px-4 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs sm:text-sm font-semibold"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
                   disabled={isCreatingOrder}
-                  className="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-md shadow-sky-600/20 active:scale-95 disabled:opacity-60 transition-all flex items-center gap-1.5"
+                  className="min-h-[44px] px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs sm:text-sm shadow-md shadow-sky-600/20 active:scale-95 disabled:opacity-60 transition-all flex items-center justify-center gap-2"
                 >
-                  <Check className="w-3.5 h-3.5" />
+                  <Check className="w-4 h-4" />
                   <span>{isCreatingOrder ? 'Создание...' : 'Создать запись'}</span>
                 </button>
               </div>
