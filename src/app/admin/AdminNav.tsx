@@ -8,7 +8,6 @@ import {
   CalendarClock, 
   Tag, 
   Sliders, 
-  Shield, 
   LogOut 
 } from 'lucide-react';
 
@@ -24,32 +23,22 @@ export function AdminNav({ mobile = false }: AdminNavProps) {
     { 
       href: '/admin/orders', 
       label: 'Записи', 
-      fullLabel: 'Записи и заявки', 
       icon: <Inbox className="w-4 h-4" /> 
     },
     { 
       href: '/admin/booking', 
       label: 'График', 
-      fullLabel: 'График и слоты', 
       icon: <CalendarClock className="w-4 h-4" /> 
     },
     { 
       href: '/admin/tariffs', 
-      label: 'Тарифы', 
-      fullLabel: 'Услуги и цены', 
+      label: 'Услуги', 
       icon: <Tag className="w-4 h-4" /> 
     },
     { 
       href: '/admin/studio', 
-      label: 'Студия', 
-      fullLabel: 'Настройки студии', 
+      label: 'Настройки', 
       icon: <Sliders className="w-4 h-4" /> 
-    },
-    { 
-      href: '/admin/security', 
-      label: 'Защита', 
-      fullLabel: 'Безопасность', 
-      icon: <Shield className="w-4 h-4" /> 
     },
   ];
 
@@ -61,11 +50,21 @@ export function AdminNav({ mobile = false }: AdminNavProps) {
     } catch {}
   };
 
+  const isLinkActive = (href: string) => {
+    if (href === '/admin/orders') {
+      return pathname === '/admin/orders' || pathname.startsWith('/admin/orders/');
+    }
+    if (href === '/admin/studio') {
+      return pathname.startsWith('/admin/studio') || pathname.startsWith('/admin/security');
+    }
+    return pathname.startsWith(href);
+  };
+
   if (mobile) {
     return (
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
         {links.map((link) => {
-          const isActive = pathname === link.href || (link.href !== '/admin/orders' && pathname.startsWith(link.href));
+          const isActive = isLinkActive(link.href);
           return (
             <Link
               key={link.href}
@@ -99,7 +98,7 @@ export function AdminNav({ mobile = false }: AdminNavProps) {
   return (
     <nav className="space-y-1.5">
       {links.map((link) => {
-        const isActive = pathname === link.href || (link.href !== '/admin/orders' && pathname.startsWith(link.href));
+        const isActive = isLinkActive(link.href);
         return (
           <Link
             key={link.href}
@@ -113,7 +112,7 @@ export function AdminNav({ mobile = false }: AdminNavProps) {
             <span className={`${isActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>
               {link.icon}
             </span>
-            <span>{link.fullLabel}</span>
+            <span>{link.label}</span>
           </Link>
         );
       })}

@@ -16,7 +16,9 @@ import {
   Loader2,
   Sparkles,
   Camera,
-  Layers
+  Layers,
+  Shield,
+  KeyRound
 } from 'lucide-react';
 
 export default function AdminStudioPage() {
@@ -555,6 +557,29 @@ export default function AdminStudioPage() {
             {exportingBackup ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5 text-sky-400" />}
             <span>Скачать бэкап настроек</span>
           </button>
+        </div>
+
+        {/* 7. Безопасность и пароль администратора */}
+        <div className="bg-zinc-950/80 rounded-3xl p-6 border border-zinc-800/80 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-sky-400" />
+              <span>Безопасность и пароль</span>
+            </h3>
+            <span className="text-[11px] text-zinc-400">Смена пароля входа в панель</span>
+          </div>
+
+          <p className="text-xs text-zinc-400">
+            Для изменения мастер-пароля администратора перейдите в раздел безопасности.
+          </p>
+
+          <a
+            href="/admin/security"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-bold text-xs border border-zinc-800 transition-all"
+          >
+            <Shield className="w-3.5 h-3.5 text-sky-400" />
+            <span>Сменить пароль администратора</span>
+          </a>
         </div>
       </form>
     </div>
