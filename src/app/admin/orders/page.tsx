@@ -218,6 +218,19 @@ export default function AdminOrdersPage() {
       .catch((e) => console.warn('Could not load workbays:', e));
   }, []);
 
+  // Проверка URL параметров (например, при переходе из Графика: ?newOrder=1&date=...&workbayId=...)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('newOrder') === '1') {
+        const pDate = sp.get('date');
+        const pBayId = sp.get('workbayId');
+        if (pDate) setGridDate(pDate);
+        handleOpenNewOrderModal(pBayId || undefined, undefined, pDate || undefined);
+      }
+    }
+  }, [workbays]);
+
   // Загрузка заказов
   const fetchOrders = async () => {
     setLoading(true);
@@ -254,14 +267,14 @@ export default function AdminOrdersPage() {
     setGridDate(getLocalDateString(current));
   };
 
-  const handleOpenNewOrderModal = (prefillBayId?: string, prefillTime?: string) => {
+  const handleOpenNewOrderModal = (prefillBayId?: string, prefillTime?: string, prefillDate?: string) => {
     setNewClientName('');
     setNewClientPhone('+7 ');
     setNewCarBrandModel('');
     setNewCarLicensePlate('');
     setNewCarClass('M');
     setNewWorkbayId(prefillBayId || (workbays[0]?.id || ''));
-    setNewDate(gridDate || getLocalDateString());
+    setNewDate(prefillDate || gridDate || getLocalDateString());
     setNewTime(prefillTime || '10:00');
     setNewComment('');
     setNewPrice('5000');
@@ -840,57 +853,129 @@ export default function AdminOrdersPage() {
                           </span>
                         </td>
 
-                        {GRID_HOURS.map((hour) => {
-                          const hourNum = parseInt(hour.slice(0, 2), 10);
-                          const orderInSlot = bayOrders.find((o) => {
-                            let h = -1;
-                            if (o.desiredTime) {
-                              h = parseInt(o.desiredTime.slice(0, 2), 10);
-                            } else if (o.booking?.startAt) {
-                              h = new Date(o.booking.startAt).getHours();
+                        {(() => {
+                          const cells: React.ReactNode[] = [];
+                          let skipUntilIndex = -1;
+
+                          GRID_HOURS.forEach((hour, hourIdx) => {
+                            if (hourIdx < skipUntilIndex) {
+                              return;
                             }
-                            return h === hourNum;
+
+                            const hourNum = parseInt(hour.slice(0, 2), 10);
+                            const orderInSlot = bayOrders.find((o) => {
+                              let h = -1;
+                              if (o.booking?.startAt) {
+                                h = new Date(o.booking.startAt).getHours();
+                              } else if (o.agreedEntryDateTime) {
+                                const timePart = o.agreedEntryDateTime.includes('T')
+                                  ? o.agreedEntryDateTime.split('T')[1]
+                                  : o.agreedEntryDateTime.split(' ')[1];
+                                if (timePart) h = parseInt(timePart.slice(0, 2), 10);
+                              }
+                              if (h === -1 && o.desiredTime) {
+                                h = parseInt(o.desiredTime.slice(0, 2), 10);
+                              }
+                              return h === hourNum;
+                            });
+
+                            if (orderInSlot) {
+                              let durationHours = 1;
+                              if (orderInSlot.booking?.startAt && orderInSlot.booking?.endAt) {
+                                const diffMs = new Date(orderInSlot.booking.endAt).getTime() - new Date(orderInSlot.booking.startAt).getTime();
+                                const hrs = Math.round(diffMs / (1000 * 60 * 60));
+                                if (hrs > 1) durationHours = hrs;
+                              }
+
+                              const colSpan = Math.min(durationHours, GRID_HOURS.length - hourIdx);
+                              skipUntilIndex = hourIdx + colSpan;
+
+                              let statusColor = 'bg-amber-500/10 border-amber-500/40 text-amber-300';
+                              let indicatorColor = 'bg-amber-400';
+                              let statusLabel = 'Новый';
+
+                              if (orderInSlot.status === 'completed' || orderInSlot.isPaid) {
+                                statusColor = 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300';
+                                indicatorColor = 'bg-emerald-400';
+                                statusLabel = orderInSlot.isPaid ? 'Оплачен' : 'Готов';
+                              } else if (orderInSlot.status === 'in_progress') {
+                                statusColor = 'bg-purple-500/15 border-purple-500/40 text-purple-300';
+                                indicatorColor = 'bg-purple-400';
+                                statusLabel = 'В боксе';
+                              } else if (orderInSlot.status === 'agreed') {
+                                statusColor = 'bg-sky-500/15 border-sky-500/40 text-sky-300';
+                                indicatorColor = 'bg-sky-400';
+                                statusLabel = 'Подтверждён';
+                              } else if (orderInSlot.status === 'cancelled') {
+                                statusColor = 'bg-rose-950/20 border-rose-900/30 text-rose-400 line-through';
+                                indicatorColor = 'bg-rose-500';
+                                statusLabel = 'Отменён';
+                              }
+
+                              cells.push(
+                                <td
+                                  key={hour}
+                                  colSpan={colSpan}
+                                  className="p-1.5 border-l border-zinc-900 align-top h-20"
+                                  style={{ minWidth: `${colSpan * 96}px` }}
+                                >
+                                  <div
+                                    onClick={() => handleOpenOrder(orderInSlot)}
+                                    className={`h-full p-2 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between hover:scale-[1.01] hover:shadow-lg ${statusColor}`}
+                                    title={`Клик для просмотра заказа #${orderInSlot.id.slice(-6)}`}
+                                  >
+                                    <div>
+                                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                                        <span className="font-extrabold text-[11px] truncate text-white leading-tight">
+                                          {orderInSlot.carBrandModel}
+                                        </span>
+                                        <span className="flex items-center gap-1 shrink-0">
+                                          <span className={`w-1.5 h-1.5 rounded-full ${indicatorColor}`} />
+                                          <span className="text-[9px] font-semibold opacity-90">{statusLabel}</span>
+                                        </span>
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                        {orderInSlot.carLicensePlate && (
+                                          <span className="px-1.5 py-0.2 rounded bg-black/60 border border-white/10 text-white font-mono font-bold text-[9px] tracking-wider">
+                                            {orderInSlot.carLicensePlate}
+                                          </span>
+                                        )}
+                                        <span className="text-[10px] text-zinc-300 truncate">
+                                          {orderInSlot.clientName}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between text-[10px] font-mono font-bold mt-1 pt-1 border-t border-white/10">
+                                      <span className="text-zinc-400 font-normal">
+                                        {colSpan > 1 ? `${colSpan} ч.` : '1 ч.'}
+                                      </span>
+                                      <span className="font-extrabold">
+                                        {(orderInSlot.agreedFinalPrice != null ? orderInSlot.agreedFinalPrice : orderInSlot.preliminaryTotal).toLocaleString('ru-RU')} ₽
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+                              );
+                            } else {
+                              cells.push(
+                                <td key={hour} className="p-1.5 border-l border-zinc-900 align-top h-20 w-24">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenNewOrderModal(bay.id, hour)}
+                                    className="w-full h-full min-h-[56px] rounded-xl border border-dashed border-zinc-900 hover:border-sky-500/40 hover:bg-sky-500/5 transition-all flex items-center justify-center text-zinc-700 hover:text-sky-400 group"
+                                    title={`Записать клиента в ${bay.name} на ${hour}`}
+                                  >
+                                    <Plus className="w-3.5 h-3.5 group-hover:scale-125 transition-transform" />
+                                  </button>
+                                </td>
+                              );
+                            }
                           });
 
-                          return (
-                            <td key={hour} className="p-1.5 border-l border-zinc-900 align-top h-20 w-24">
-                              {orderInSlot ? (
-                                <div
-                                  onClick={() => handleOpenOrder(orderInSlot)}
-                                  className={`h-full p-1.5 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between ${
-                                    orderInSlot.status === 'completed'
-                                      ? 'bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20 text-emerald-300'
-                                      : orderInSlot.status === 'agreed'
-                                      ? 'bg-sky-500/10 border-sky-500/30 hover:bg-sky-500/20 text-sky-300'
-                                      : 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20 text-amber-300'
-                                  }`}
-                                  title={`Клик для просмотра заказа #${orderInSlot.id.slice(-6)}`}
-                                >
-                                  <div>
-                                    <div className="font-extrabold text-[10px] truncate text-white leading-tight">
-                                      {orderInSlot.carBrandModel}
-                                    </div>
-                                    <div className="text-[9px] text-zinc-400 truncate mt-0.5">
-                                      {orderInSlot.clientName}
-                                    </div>
-                                  </div>
-                                  <div className="text-[9px] font-mono font-bold mt-1">
-                                    {(orderInSlot.agreedFinalPrice || orderInSlot.preliminaryTotal).toLocaleString()} ₽
-                                  </div>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenNewOrderModal(bay.id, hour)}
-                                  className="w-full h-full min-h-[56px] rounded-xl border border-dashed border-zinc-900 hover:border-sky-500/40 hover:bg-sky-500/5 transition-all flex items-center justify-center text-zinc-700 hover:text-sky-400"
-                                  title={`Записать клиента в ${bay.name} на ${hour}`}
-                                >
-                                  <Plus className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </td>
-                          );
-                        })}
+                          return cells;
+                        })()}
                       </tr>
                     );
                   })

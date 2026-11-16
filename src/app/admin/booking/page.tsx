@@ -86,6 +86,14 @@ const DAYS_NAMES = ['Воскресенье', 'Понедельник', 'Вто�
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const WEEK_HEADERS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
+function formatRussianDate(dStr: string): string {
+  if (!dStr) return '';
+  const [y, m, d] = dStr.split('-').map(Number);
+  if (!y || !m || !d) return dStr;
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }).replace(' г.', '');
+}
+
 export default function AdminBookingPage() {
   const [activeTab, setActiveTab] = useState<'calendar' | 'schedule' | 'bays'>('calendar');
   const [loading, setLoading] = useState(true);
@@ -630,12 +638,6 @@ export default function AdminBookingPage() {
           >
             Боксы студии ({workbays.length})
           </button>
-          <Link
-            href="/admin/tariffs"
-            className="px-3.5 py-1.5 rounded-lg text-sky-400 hover:text-sky-300 hover:bg-zinc-800/60 font-semibold flex items-center gap-1.5 transition-all text-xs border border-sky-500/20"
-          >
-            <span>Управлять услугами и таймингами &rarr;</span>
-          </Link>
         </div>
       </div>
 
@@ -715,7 +717,7 @@ export default function AdminBookingPage() {
                     {MONTH_NAMES[calendarMonth]} {calendarYear}
                   </h2>
                   <span className="text-xs text-zinc-500">
-                    Клик по числу меняет статус (Рабочий ↔ Выходной)
+                    Выберите день для просмотра загрузки боксов
                   </span>
                 </div>
 
@@ -785,13 +787,11 @@ export default function AdminBookingPage() {
                       </div>
 
                       <div className="text-[9px] sm:text-[10px] truncate leading-tight w-full">
-                        {item.isDayOff ? (
+                        {item.isDayOff && (
                           <span className="text-rose-400 font-medium block truncate">Выходной</span>
-                        ) : (
-                          <span className="text-emerald-400 block truncate">Открыт</span>
                         )}
                         {item.bookingsCount > 0 && (
-                          <span className="text-sky-300 font-mono block truncate">
+                          <span className="text-sky-300 font-mono font-bold block truncate">
                             {item.bookingsCount} зак.
                           </span>
                         )}
@@ -804,8 +804,8 @@ export default function AdminBookingPage() {
               {/* Легенда */}
               <div className="flex items-center gap-4 pt-3 border-t border-zinc-800/60 text-xs text-zinc-400">
                 <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                  <span>Рабочий день (слоты доступны)</span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-zinc-600" />
+                  <span>Рабочий день</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
@@ -902,7 +902,7 @@ export default function AdminBookingPage() {
                           key={o.id}
                           className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between text-xs"
                         >
-                          <span className="font-mono text-zinc-300">{o.date}</span>
+                          <span className="font-medium text-zinc-200">{formatRussianDate(o.date)}</span>
                           <button
                             type="button"
                             onClick={() => handleToggleCalendarDate(o.date)}
@@ -986,7 +986,7 @@ export default function AdminBookingPage() {
                     return (
                       <div
                         key={bay.id}
-                        className="p-4 sm:p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 space-y-3 flex flex-col justify-between"
+                        className="p-3.5 sm:p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 space-y-2.5 flex flex-col justify-between"
                       >
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">
@@ -1006,29 +1006,36 @@ export default function AdminBookingPage() {
                         {/* Список броней в этом боксе */}
                         <div className="space-y-2 pt-2 border-t border-zinc-800/60">
                           {activeBayOrders.length === 0 && cancelledBayOrders.length === 0 ? (
-                            <div className="py-4 text-center text-xs text-zinc-500 bg-zinc-950/40 rounded-xl border border-dashed border-zinc-800">
-                              ✓ Бокс свободен в течение всей смены
+                            <div className="py-3 px-3 text-center text-xs text-zinc-500 bg-zinc-950/40 rounded-xl border border-dashed border-zinc-800 space-y-2">
+                              <span className="block text-zinc-400 font-medium">✓ Бокс свободен в течение смены</span>
+                              <Link
+                                href={`/admin/orders?newOrder=1&date=${selectedCalendarDate}&workbayId=${bay.id}`}
+                                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600/15 hover:bg-sky-600 text-sky-400 hover:text-white border border-sky-500/30 text-xs font-bold transition-all"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>+ Записать в бокс</span>
+                              </Link>
                             </div>
                           ) : (
                             <>
                               {activeBayOrders.map((ord) => (
                                 <div
                                   key={ord.id}
-                                  className="p-3 rounded-xl bg-zinc-950/80 border border-sky-500/30 text-xs space-y-1.5"
+                                  className="p-2.5 rounded-xl bg-zinc-950/80 border border-sky-500/30 text-xs space-y-1"
                                 >
                                   <div className="flex items-center justify-between">
-                                    <span className="font-bold text-white flex items-center gap-1.5">
-                                      <Car className="w-3.5 h-3.5 text-sky-400" />
-                                      <span>{ord.carBrandModel}</span>
+                                    <span className="font-bold text-white flex items-center gap-1.5 truncate">
+                                      <Car className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                                      <span className="truncate">{ord.carBrandModel}</span>
                                     </span>
-                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20 font-bold">
+                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20 font-bold shrink-0">
                                       {ord.agreedEntryDateTime ? ord.agreedEntryDateTime.slice(-5) : ord.desiredTime || '09:00'}
                                     </span>
                                   </div>
                                   <div className="flex items-center justify-between text-zinc-400 text-[11px]">
-                                    <span>{ord.clientName} ({ord.clientPhone})</span>
-                                    <span className="font-bold text-zinc-200">
-                                      {ord.agreedFinalPrice != null ? `${ord.agreedFinalPrice.toLocaleString('ru-RU')} ₽` : `${ord.preliminaryTotal?.toLocaleString('ru-RU')} ₽`}
+                                    <span className="truncate">{ord.clientName} ({ord.clientPhone})</span>
+                                    <span className="font-bold text-zinc-200 shrink-0">
+                                      {(ord.agreedFinalPrice != null ? ord.agreedFinalPrice : ord.preliminaryTotal)?.toLocaleString('ru-RU')} ₽
                                     </span>
                                   </div>
                                   <div className="flex items-center justify-between pt-1 border-t border-zinc-900 text-[10px]">
@@ -1048,16 +1055,25 @@ export default function AdminBookingPage() {
                                 </div>
                               ))}
 
+                              {/* Кнопка быстрой записи в бокс */}
+                              <Link
+                                href={`/admin/orders?newOrder=1&date=${selectedCalendarDate}&workbayId=${bay.id}`}
+                                className="w-full py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                              >
+                                <Plus className="w-3.5 h-3.5 text-sky-400" />
+                                <span>+ Записать в бокс</span>
+                              </Link>
+
                               {/* Отменённые бронирования (освобожденные слоты) */}
                               {cancelledBayOrders.map((ord) => (
                                 <div
                                   key={ord.id}
-                                  className="p-2.5 rounded-xl bg-rose-950/10 border border-rose-900/30 text-xs space-y-1 opacity-75"
+                                  className="p-2 rounded-xl bg-rose-950/10 border border-rose-900/30 text-xs space-y-0.5 opacity-75"
                                 >
                                   <div className="flex items-center justify-between text-rose-300">
                                     <span className="line-through font-medium">{ord.carBrandModel} • {ord.clientName}</span>
                                     <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                                      Отменено (бокс свободен)
+                                      Отменено
                                     </span>
                                   </div>
                                   {ord.cancelReason && (
