@@ -273,6 +273,11 @@ export function calculateItemPrice(
     baseUnitPrice = service.basePrices[carClass] || 0;
   }
   
+  // Если автомобиль сильно загрязнен, применяем надбавку к позиции
+  if (isDirty && dirtyMarkupPercent > 0) {
+    baseUnitPrice = baseUnitPrice * (1 + dirtyMarkupPercent / 100);
+  }
+
   const unitPrice = roundToTens(baseUnitPrice);
   const itemTotal = roundToTens(unitPrice * Math.max(1, quantity));
 
@@ -309,12 +314,12 @@ export function calculateOrderSummary(
     }
   }
 
-  // Применение надбавки за сильные загрязнения
+  // Надбавка за загрязнения уже включена в стоимость каждой позиции itemTotal
   let dirtyMarkupAmount = 0;
-  if (isDirty && itemsSubtotal > 0) {
-    dirtyMarkupAmount = roundToTens(itemsSubtotal * (dirtyMarkupPercent / 100));
+  if (isDirty && itemsSubtotal > 0 && dirtyMarkupPercent > 0) {
+    dirtyMarkupAmount = Math.round(itemsSubtotal - itemsSubtotal / (1 + dirtyMarkupPercent / 100));
   }
-  const subtotalWithDirty = itemsSubtotal + dirtyMarkupAmount;
+  const subtotalWithDirty = itemsSubtotal;
 
   // Проверка минимального чека (относится только к известным работам)
   let minOrderDeficit = 0;

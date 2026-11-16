@@ -241,7 +241,8 @@ export async function DELETE(
 
     const beforePhotos: any[] = JSON.parse(order.inspectionPhotosBeforeJson || '[]');
     for (const photo of beforePhotos) {
-      const pid = photo?.id || (photo?.url ? photo.url.replace('/api/photos/', '').replace('.webp', '') : null);
+      const rawUrl = photo?.url || '';
+      const pid = photo?.id || (rawUrl ? rawUrl.replace('/api/photos/', '').split('?')[0].replace('.webp', '') : null);
       if (pid) {
         await deletePhotoFile(pid);
       }
@@ -249,7 +250,8 @@ export async function DELETE(
 
     const afterPhotos: any[] = JSON.parse(order.inspectionPhotosAfterJson || '[]');
     for (const photo of afterPhotos) {
-      const pid = photo?.id || (photo?.url ? photo.url.replace('/api/photos/', '').replace('.webp', '') : null);
+      const rawUrl = photo?.url || '';
+      const pid = photo?.id || (rawUrl ? rawUrl.replace('/api/photos/', '').split('?')[0].replace('.webp', '') : null);
       if (pid) {
         await deletePhotoFile(pid);
       }

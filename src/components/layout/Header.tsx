@@ -62,16 +62,8 @@ export function Header({ settings, cartCount = 0, cartTotalFormatted = '0 ₽', 
           </a>
         </div>
 
-        {/* Правая панель: Админка, Корзина */}
+        {/* Правая панель: Корзина */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Ссылка в админку */}
-          <Link
-            href="/admin"
-            className="hidden sm:inline-flex items-center text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 font-medium px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-all"
-          >
-            Кабинет владельца
-          </Link>
-
           {/* Кнопка Корзины */}
           {onOpenCart && (
             <button

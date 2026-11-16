@@ -433,38 +433,40 @@ export function StudioClientApp({ settings }: StudioClientAppProps) {
           </div>
 
           {/* 2. Формат и Загрязнения (в 1 ряд) */}
-          <div className="pt-4 border-t border-zinc-800/80 grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
+          <div className={`pt-4 border-t border-zinc-800/80 grid grid-cols-1 ${settings.mobileServiceEnabled ? 'sm:grid-cols-2' : ''} gap-2.5 sm:gap-3`}>
             
             {/* Выезд мастера */}
-            <div className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all ${
-              serviceFormat === 'mobile' ? 'bg-[#181d2a] border-sky-500/60' : 'bg-[#10131c] border-zinc-700/60'
-            }`}>
-              <div className="flex items-center gap-2.5">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${serviceFormat === 'mobile' ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' : 'bg-zinc-800 text-zinc-400'}`}>
-                  {serviceFormat === 'mobile' ? <Truck className="w-4 h-4" /> : <Home className="w-4 h-4" />}
+            {settings.mobileServiceEnabled && (
+              <div className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all ${
+                serviceFormat === 'mobile' ? 'bg-[#181d2a] border-sky-500/60' : 'bg-[#10131c] border-zinc-700/60'
+              }`}>
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${serviceFormat === 'mobile' ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' : 'bg-zinc-800 text-zinc-400'}`}>
+                    {serviceFormat === 'mobile' ? <Truck className="w-4 h-4" /> : <Home className="w-4 h-4" />}
+                  </div>
+                  <div>
+                    <span className="block text-xs font-semibold text-zinc-200">
+                      {serviceFormat === 'mobile' ? 'Выезд мастера к вам' : 'В боксе студии'}
+                    </span>
+                    <span className="block text-[11px] text-zinc-400">
+                      {serviceFormat === 'mobile' ? `+${settings.mobileServicePrice} ₽ к сумме` : settings.address}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="block text-xs font-semibold text-zinc-200">
-                    {serviceFormat === 'mobile' ? 'Выезд мастера к вам' : 'В боксе студии'}
-                  </span>
-                  <span className="block text-[11px] text-zinc-400">
-                    {serviceFormat === 'mobile' ? `+${settings.mobileServicePrice} ₽ к сумме` : settings.address}
-                  </span>
-                </div>
-              </div>
 
-              <button
-                type="button"
-                onClick={() => setServiceFormat(serviceFormat === 'studio' ? 'mobile' : 'studio')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold apple-btn transition-all ${
-                  serviceFormat === 'mobile'
-                    ? 'bg-sky-500 text-white shadow-sm'
-                    : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700'
-                }`}
-              >
-                {serviceFormat === 'mobile' ? 'Выбран' : 'Выбрать'}
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setServiceFormat(serviceFormat === 'studio' ? 'mobile' : 'studio')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold apple-btn transition-all ${
+                    serviceFormat === 'mobile'
+                      ? 'bg-sky-500 text-white shadow-sm'
+                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700'
+                  }`}
+                >
+                  {serviceFormat === 'mobile' ? 'Выбран' : 'Выбрать'}
+                </button>
+              </div>
+            )}
 
             {/* Сильные загрязнения */}
             <div className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all ${

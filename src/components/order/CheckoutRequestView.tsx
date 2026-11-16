@@ -511,36 +511,38 @@ export function CheckoutRequestView({
               </h2>
 
               {/* Переключатель формата */}
-              <div className="flex bg-[#0c0e14] p-1 rounded-xl border border-zinc-700/80 text-[11px]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSetServiceFormat('studio');
-                    triggerHaptic('selection');
-                  }}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
-                    serviceFormat === 'studio'
-                      ? 'bg-zinc-800 text-white font-medium shadow-sm border border-zinc-700/60'
-                      : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  В боксе студии
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSetServiceFormat('mobile');
-                    triggerHaptic('selection');
-                  }}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
-                    serviceFormat === 'mobile'
-                      ? 'bg-zinc-800 text-white font-medium shadow-sm border border-zinc-700/60'
-                      : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  Выезд к авто
-                </button>
-              </div>
+              {settings.mobileServiceEnabled && (
+                <div className="flex bg-[#0c0e14] p-1 rounded-xl border border-zinc-700/80 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSetServiceFormat('studio');
+                      triggerHaptic('selection');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                      serviceFormat === 'studio'
+                        ? 'bg-zinc-800 text-white font-medium shadow-sm border border-zinc-700/60'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    В боксе студии
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSetServiceFormat('mobile');
+                      triggerHaptic('selection');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                      serviceFormat === 'mobile'
+                        ? 'bg-zinc-800 text-white font-medium shadow-sm border border-zinc-700/60'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    Выезд к авто
+                  </button>
+                </div>
+              )}
             </div>
 
             {serviceFormat === 'studio' ? (
@@ -591,10 +593,10 @@ export function CheckoutRequestView({
               Когда вам удобно
             </h2>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
               <div className="relative">
                 <label className="block text-[11px] font-medium text-zinc-400 mb-1.5">
-                  Желаемая дата
+                  Желаемая дата визита
                 </label>
                 <button
                   type="button"
@@ -625,28 +627,6 @@ export function CheckoutRequestView({
                     />
                   </div>
                 )}
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-medium text-zinc-400 mb-1.5">
-                  Желаемое время {isLoadingSlots && <span className="text-zinc-500">(поиск слотов...)</span>}
-                </label>
-                <div className="relative">
-                  <select
-                    value={desiredTime}
-                    onChange={(e) => setDesiredTime(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-[#0c0e14] border border-zinc-700/80 text-xs sm:text-sm text-white focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all font-mono"
-                  >
-                    <option value="">{isLoadingSlots ? 'Загрузка...' : '--:-- (выберите время)'}</option>
-                    {slots
-                      .filter((s) => s.available)
-                      .map((s) => (
-                        <option key={s.time} value={s.time}>
-                          {s.time}
-                        </option>
-                      ))}
-                  </select>
-                </div>
               </div>
             </div>
 
