@@ -297,20 +297,30 @@ export async function POST(req: NextRequest) {
     // Отправка Telegram уведомления (асинхронно, не блокируя ответ клиенту)
     const host = req.headers.get('host') || 'localhost:3000';
     const proto = req.headers.get('x-forwarded-proto') || 'http';
-    notifyNewOrder({
-      id: newOrder.id,
-      token: newOrder.token,
-      clientName: newOrder.clientName,
-      clientPhone: newOrder.clientPhone,
-      carBrandModel: newOrder.carBrandModel,
-      carClass: newOrder.carClass,
-      preliminaryTotal: newOrder.preliminaryTotal,
-      desiredDate: newOrder.desiredDate,
-      desiredTime: newOrder.desiredTime,
-      serviceFormat: newOrder.serviceFormat,
-      deliveryAddress: newOrder.deliveryAddress,
-      items: verifiedItems,
-    }, `${proto}://${host}`).catch((e) => console.warn('Telegram notify error:', e));
+    notifyNewOrder(
+      {
+        id: newOrder.id,
+        token: newOrder.token,
+        clientName: newOrder.clientName,
+        clientPhone: newOrder.clientPhone,
+        carBrandModel: newOrder.carBrandModel,
+        carClass: newOrder.carClass,
+        preliminaryTotal: newOrder.preliminaryTotal,
+        desiredDate: newOrder.desiredDate,
+        desiredTime: newOrder.desiredTime,
+        serviceFormat: newOrder.serviceFormat,
+        deliveryAddress: newOrder.deliveryAddress,
+        items: verifiedItems,
+      },
+      `${proto}://${host}`,
+      settings.telegramBotToken && settings.telegramChatId
+        ? {
+            botToken: settings.telegramBotToken,
+            chatId: settings.telegramChatId,
+            apiUrl: settings.telegramApiUrl,
+          }
+        : undefined
+    ).catch((e) => console.warn('Telegram notify error:', e));
 
     return NextResponse.json({
       success: true,

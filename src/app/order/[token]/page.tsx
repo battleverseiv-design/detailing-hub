@@ -92,7 +92,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
     completed: {
       label: 'Заказ завершён',
       color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-      desc: 'Автомобиль выдан владельцу. Спасибо за доверие к DetailingHub!',
+      desc: `Автомобиль выдан владельцу. Спасибо за доверие к ${settings.shortName || settings.studioName || 'нашей студии'}!`,
       step: 4,
     },
     cancelled: {
@@ -408,33 +408,43 @@ export default async function OrderPage({ params }: OrderPageProps) {
                   )}
                 </div>
 
-                {/* Параметры авто */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800/80 text-xs">
-                  <div>
-                    <span className="text-[10px] text-zinc-400 uppercase font-bold block mb-0.5">Госномер</span>
-                    <span className="font-mono font-bold text-white tracking-wider">
-                      {order.carLicensePlate || 'Не указан'}
-                    </span>
+                {/* Параметры авто (отображаем только реально заполненные поля) */}
+                {(order.carLicensePlate || order.carVin || order.mileage != null || order.fuelLevel != null) && (
+                  <div className="flex flex-wrap gap-4 sm:gap-6 p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800/80 text-xs">
+                    {order.carLicensePlate && (
+                      <div className="min-w-[120px]">
+                        <span className="text-[10px] text-zinc-400 uppercase font-bold block mb-0.5">Госномер</span>
+                        <span className="font-mono font-bold text-white tracking-wider">
+                          {order.carLicensePlate}
+                        </span>
+                      </div>
+                    )}
+                    {order.carVin && (
+                      <div className="min-w-[120px]">
+                        <span className="text-[10px] text-zinc-400 uppercase font-bold block mb-0.5">VIN код</span>
+                        <span className="font-mono font-bold text-white truncate block">
+                          {order.carVin.length > 10 ? `${order.carVin.slice(0, 10)}...` : order.carVin}
+                        </span>
+                      </div>
+                    )}
+                    {order.mileage != null && (
+                      <div className="min-w-[120px]">
+                        <span className="text-[10px] text-zinc-400 uppercase font-bold block mb-0.5">Пробег</span>
+                        <span className="font-mono font-bold text-white">
+                          {order.mileage.toLocaleString()} км
+                        </span>
+                      </div>
+                    )}
+                    {order.fuelLevel != null && (
+                      <div className="min-w-[120px]">
+                        <span className="text-[10px] text-zinc-400 uppercase font-bold block mb-0.5">Топливо</span>
+                        <span className="font-mono font-bold text-white">
+                          {order.fuelLevel}%
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <span className="text-[10px] text-zinc-400 uppercase font-bold block mb-0.5">VIN код</span>
-                    <span className="font-mono font-bold text-white truncate block">
-                      {order.carVin ? `${order.carVin.slice(0, 10)}...` : 'Не указан'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-zinc-400 uppercase font-bold block mb-0.5">Пробег</span>
-                    <span className="font-mono font-bold text-white">
-                      {order.mileage != null ? `${order.mileage.toLocaleString()} км` : 'Не зафиксирован'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-zinc-400 uppercase font-bold block mb-0.5">Топливо</span>
-                    <span className="font-mono font-bold text-white">
-                      {order.fuelLevel != null ? `${order.fuelLevel}%` : 'Не указан'}
-                    </span>
-                  </div>
-                </div>
+                )}
 
                 {/* Фотоотчёт ДО работ */}
                 {photosBefore.length > 0 && (
@@ -510,7 +520,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
         <div className="border-b-2 border-black pb-4 mb-6 flex justify-between items-start">
           <div>
             <h1 className="text-2xl font-black tracking-tight text-black uppercase">
-              {settings.studioName || 'DetailingHub'}
+              {settings.shortName || settings.studioName || 'Студия Детейлинга'}
             </h1>
             <p className="text-xs text-neutral-600 mt-0.5">
               Студия профессионального детейлинга и ухода за автомобилями
@@ -666,7 +676,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
             <p className="font-bold mb-8">Автомобиль в работу принял, дефектовку кузова произвел:</p>
             <div className="border-b border-black pb-1 flex justify-between items-end">
               <span className="text-[10px] text-neutral-500">Подпись Мастера-приёмщика</span>
-              <span className="font-bold text-black">Студия DetailingHub</span>
+              <span className="font-bold text-black">{settings.shortName || settings.studioName || 'Студия Детейлинга'}</span>
             </div>
           </div>
         </div>

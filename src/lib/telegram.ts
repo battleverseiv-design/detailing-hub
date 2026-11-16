@@ -242,7 +242,25 @@ export async function notifyNewOrder(order: {
   serviceFormat: string;
   deliveryAddress?: string | null;
   items?: any[];
-}, baseUrl: string = 'http://localhost:3000') {
+}, baseUrl: string = 'http://localhost:3000', options?: TelegramMessageOptions) {
+  let tgOptions = options;
+  if (!tgOptions?.botToken || !tgOptions?.chatId) {
+    try {
+      const { getStudioSettings } = await import('@/lib/studio-service');
+      const settings = await getStudioSettings();
+      if (settings.telegramBotToken && settings.telegramChatId) {
+        tgOptions = {
+          botToken: settings.telegramBotToken,
+          chatId: settings.telegramChatId,
+          apiUrl: settings.telegramApiUrl,
+          ...options,
+        };
+      }
+    } catch {
+      // Fallback к options / env
+    }
+  }
+
   const itemsList = order.items?.map((it) => `• ${it.name}`).join('\n') || 'Комплекс услуг';
   const orderUrl = `${baseUrl}/order/${order.token}`;
   const adminUrl = `${baseUrl}/admin/orders`;
@@ -263,7 +281,7 @@ ${itemsList}
 🔗 <a href="${orderUrl}">Ссылка клиента</a> | <a href="${adminUrl}">Панель администратора</a>
 `.trim();
 
-  return sendTelegramMessage(msg);
+  return sendTelegramMessage(msg, tgOptions);
 }
 
 /**
@@ -276,7 +294,25 @@ export async function notifyOrderStatusChanged(order: {
   status: string;
   agreedEntryDateTime?: string | null;
   agreedFinalPrice?: number | null;
-}, baseUrl: string = 'http://localhost:3000') {
+}, baseUrl: string = 'http://localhost:3000', options?: TelegramMessageOptions) {
+  let tgOptions = options;
+  if (!tgOptions?.botToken || !tgOptions?.chatId) {
+    try {
+      const { getStudioSettings } = await import('@/lib/studio-service');
+      const settings = await getStudioSettings();
+      if (settings.telegramBotToken && settings.telegramChatId) {
+        tgOptions = {
+          botToken: settings.telegramBotToken,
+          chatId: settings.telegramChatId,
+          apiUrl: settings.telegramApiUrl,
+          ...options,
+        };
+      }
+    } catch {
+      // Fallback к options / env
+    }
+  }
+
   const orderUrl = `${baseUrl}/order/${order.token}`;
 
   let statusText = 'Обновлен статус заказа';
@@ -298,7 +334,7 @@ ${statusText}
 🔗 <a href="${orderUrl}">${orderUrl}</a>
 `.trim();
 
-  return sendTelegramMessage(msg);
+  return sendTelegramMessage(msg, tgOptions);
 }
 
 /**

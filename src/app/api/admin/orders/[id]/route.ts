@@ -3,6 +3,7 @@ import { verifyAdminSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { deletePhotoFile } from '@/lib/storage';
 import { notifyOrderStatusChanged } from '@/lib/telegram';
+import { getStudioSettings } from '@/lib/studio-service';
 import { OrderPhoto } from '@/types';
 
 export async function GET(
@@ -187,14 +188,25 @@ export async function PUT(
     if (status && status !== existingOrder.status) {
       const host = req.headers.get('host') || 'localhost:3000';
       const proto = req.headers.get('x-forwarded-proto') || 'http';
-      notifyOrderStatusChanged({
-        token: updated.token,
-        clientName: updated.clientName,
-        carBrandModel: updated.carBrandModel,
-        status: updated.status,
-        agreedEntryDateTime: updated.agreedEntryDateTime,
-        agreedFinalPrice: updated.agreedFinalPrice,
-      }, `${proto}://${host}`).catch((e) => console.warn('Telegram status notification note:', e));
+      const settings = await getStudioSettings().catch(() => null);
+      notifyOrderStatusChanged(
+        {
+          token: updated.token,
+          clientName: updated.clientName,
+          carBrandModel: updated.carBrandModel,
+          status: updated.status,
+          agreedEntryDateTime: updated.agreedEntryDateTime,
+          agreedFinalPrice: updated.agreedFinalPrice,
+        },
+        `${proto}://${host}`,
+        settings?.telegramBotToken && settings?.telegramChatId
+          ? {
+              botToken: settings.telegramBotToken,
+              chatId: settings.telegramChatId,
+              apiUrl: settings.telegramApiUrl,
+            }
+          : undefined
+      ).catch((e) => console.warn('Telegram status notification note:', e));
     }
 
     return NextResponse.json({
