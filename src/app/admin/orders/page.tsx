@@ -169,6 +169,9 @@ export default function AdminOrdersPage() {
   const [newOrderError, setNewOrderError] = useState('');
 
   // Редактирование в модальном окне
+  const [modalTab, setModalTab] = useState<'main' | 'photos'>('main');
+  const [editStatus, setEditStatus] = useState<string>('new');
+  const [editCancelReason, setEditCancelReason] = useState<string>('');
   const [editPrice, setEditPrice] = useState<string>('');
   const [editSlotDate, setEditSlotDate] = useState<string>('');
   const [editSlotTime, setEditSlotTime] = useState<string>('10:00');
@@ -465,8 +468,21 @@ export default function AdminOrdersPage() {
     setPhotosBefore(Array.isArray(order.inspectionPhotosBefore) ? order.inspectionPhotosBefore : []);
     setPhotosAfter(Array.isArray(order.inspectionPhotosAfter) ? order.inspectionPhotosAfter : []);
 
+    setEditStatus(order.status || 'new');
+    setModalTab('main');
+    setEditCancelReason(order.cancelReason || '');
+
     setModalError('');
     setSaveSuccess(false);
+  };
+
+  const handleStatusSelect = (st: string) => {
+    if (st === 'cancelled') {
+      const reason = prompt('Укажите причину отмены или No-Show (неявка клиента):', editCancelReason || 'Клиент отменил визит по телефону');
+      if (reason === null) return;
+      setEditCancelReason(reason);
+    }
+    setEditStatus(st);
   };
 
   // Загрузка фото для акта
@@ -518,8 +534,14 @@ export default function AdminOrdersPage() {
     setModalError('');
     setSaveSuccess(false);
 
-    const newStatus = targetStatus || activeOrder.status;
+    const newStatus = targetStatus || editStatus || activeOrder.status;
     const combinedSlot = editSlotDate ? `${editSlotDate} ${editSlotTime || '10:00'}`.trim() : '';
+
+    if (newStatus === 'agreed' && !combinedSlot) {
+      setModalError('Для перевода в статус «Подтверждён» необходимо указать дату и время заезда');
+      setSavingOrder(false);
+      return;
+    }
 
     try {
       const payload: any = {
@@ -534,7 +556,7 @@ export default function AdminOrdersPage() {
         inspectionPhotosAfterJson: JSON.stringify(photosAfter),
         ...(newStatus === 'cancelled'
           ? {
-              cancelReason: customCancelReason || 'Отменено администратором студии',
+              cancelReason: customCancelReason || editCancelReason || 'Отменено администратором студии',
               cancelledBy: 'admin',
             }
           : {}),
@@ -1244,8 +1266,81 @@ export default function AdminOrdersPage() {
               </div>
             </div>
 
-            {/* БАННЕР ЕСЛИ ЗАКАЗ ОТМЕНЁН */}
-            {activeOrder.status === 'cancelled' && (
+            {/* 1. СТАТУС ЗАКАЗА — СЕГМЕНТИРОВАННЫЙ ПЕРЕКЛЮЧАТЕЛЬ НАВЕРХУ */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
+                Статус записи
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1 rounded-2xl bg-zinc-900 border border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => handleStatusSelect('new')}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    editStatus === 'new'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-500/10'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${editStatus === 'new' ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
+                  <span>Новый</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleStatusSelect('agreed')}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    editStatus === 'agreed'
+                      ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm shadow-sky-500/10'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${editStatus === 'agreed' ? 'bg-sky-400' : 'bg-zinc-600'}`} />
+                  <span>Подтверждён</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleStatusSelect('in_progress')}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    editStatus === 'in_progress'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm shadow-purple-500/10'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${editStatus === 'in_progress' ? 'bg-purple-400' : 'bg-zinc-600'}`} />
+                  <span>В боксе</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleStatusSelect('completed')}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    editStatus === 'completed'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/10'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${editStatus === 'completed' ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+                  <span>Готов к выдаче</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleStatusSelect('cancelled')}
+                  className={`col-span-2 sm:col-span-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    editStatus === 'cancelled'
+                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-500/10'
+                      : 'text-zinc-400 hover:text-rose-400 hover:bg-zinc-800/60'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${editStatus === 'cancelled' ? 'bg-rose-400' : 'bg-zinc-600'}`} />
+                  <span>Отменён</span>
+                </button>
+              </div>
+            </div>
+
+            {/* БАННЕР ЕСЛИ СТАТУС ОТМЕНЁН */}
+            {editStatus === 'cancelled' && (
               <div className="p-3.5 rounded-2xl bg-rose-950/20 border border-rose-900/40 text-xs text-rose-300 space-y-1">
                 <div className="font-bold text-rose-400 flex items-center gap-1.5">
                   <Ban className="w-4 h-4" />
@@ -1253,287 +1348,376 @@ export default function AdminOrdersPage() {
                 </div>
                 <p className="text-zinc-400">
                   <strong>Инициатор:</strong> {activeOrder.cancelledBy === 'client' ? 'Клиент через сайт' : 'Администратор студии'}
-                  {activeOrder.cancelReason && <span className="block mt-0.5"><strong>Причина:</strong> {activeOrder.cancelReason}</span>}
+                  {(editCancelReason || activeOrder.cancelReason) && (
+                    <span className="block mt-0.5">
+                      <strong>Причина:</strong> {editCancelReason || activeOrder.cancelReason}
+                    </span>
+                  )}
                 </p>
               </div>
             )}
 
-            {/* Состав услуг */}
-            <div className="space-y-2">
-              <span className="text-xs font-semibold text-zinc-400 block uppercase tracking-wider">
-                Выбранные услуги ({activeOrder.items?.length || 0})
-              </span>
-              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                {activeOrder.items?.map((it, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between text-xs"
-                  >
-                    <div>
-                      <span className="text-zinc-200 font-medium">
-                        {it.name} {it.quantity > 1 ? `x${it.quantity}` : ''}
-                      </span>
-                      {it.customDescription && (
-                        <span className="text-[11px] text-sky-400 block">{it.customDescription}</span>
-                      )}
-                    </div>
-                    <span className="font-mono font-semibold text-white">
-                      {it.itemTotal?.toLocaleString('ru-RU')} ₽
-                    </span>
-                  </div>
-                ))}
-              </div>
+            {/* 2. ВКЛАДКИ: «Основное и оплата» и «Фотоотчёт» */}
+            <div className="flex items-center gap-2 border-b border-zinc-800 pb-2">
+              <button
+                type="button"
+                onClick={() => setModalTab('main')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                  modalTab === 'main'
+                    ? 'bg-white text-zinc-950 shadow-md'
+                    : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Основное и оплата</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModalTab('photos')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                  modalTab === 'photos'
+                    ? 'bg-white text-zinc-950 shadow-md'
+                    : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
+                }`}
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>Фотоотчёт</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                    modalTab === 'photos' ? 'bg-zinc-900 text-white' : 'bg-zinc-800 text-zinc-300'
+                  }`}
+                >
+                  {(activeOrder.photos?.length || 0) + photosBefore.length + photosAfter.length}
+                </span>
+              </button>
             </div>
 
-            {/* Основные параметры заказа */}
-            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-4">
-              <span className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
-                Параметры и согласование
-              </span>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
-                {/* Итоговая цена */}
-                <div>
-                  <label className="block text-zinc-400 mb-1 font-medium">
-                    Итоговая согласованная цена (₽)
-                  </label>
-                  <input
-                    type="number"
-                    value={editPrice}
-                    onChange={(e) => setEditPrice(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500"
-                  />
-                </div>
-
-                {/* Согласованное время заезда */}
-                <div>
-                  <label className="block text-zinc-400 mb-1 font-medium">
-                    Согласованная дата и время заезда
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      id="agreed-entry-slot-input"
-                      type="date"
-                      value={editSlotDate}
-                      onChange={(e) => setEditSlotDate(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500 [color-scheme:dark]"
-                    />
-                    <input
-                      type="time"
-                      value={editSlotTime}
-                      onChange={(e) => setEditSlotTime(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500 [color-scheme:dark]"
-                    />
-                  </div>
-                </div>
-
-                {/* Госномер */}
-                <div>
-                  <label className="block text-zinc-400 mb-1 font-medium">
-                    Госномер автомобиля
-                  </label>
-                  <input
-                    type="text"
-                    value={editPlate}
-                    onChange={(e) => setEditPlate(e.target.value.toUpperCase())}
-                    placeholder="А777АА 777"
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono font-bold text-xs focus:outline-none focus:border-sky-500"
-                  />
-                </div>
-
-                {/* Оплата клиентом */}
-                <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between sm:col-span-1">
-                  <div>
-                    <span className="block text-zinc-200 font-bold text-xs">Оплата клиентом</span>
-                    <span className="text-[10px] text-zinc-400">Оплачен в студии</span>
-                  </div>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isPaid}
-                      onChange={(e) => setIsPaid(e.target.checked)}
-                      className="w-4 h-4 rounded text-emerald-500 bg-zinc-900 border-zinc-700"
-                    />
-                    <span className={`text-xs font-bold ${isPaid ? 'text-emerald-400' : 'text-zinc-500'}`}>
-                      {isPaid ? '✓ Оплачен' : 'Не оплачен'}
-                    </span>
-                  </label>
-                </div>
-
-                {/* Способ оплаты в студии */}
-                <div className="sm:col-span-2">
-                  <label className="block text-zinc-400 mb-1 font-medium">
-                    Способ оплаты в студии
-                  </label>
-                  <select
-                    value={editPaymentMethod}
-                    onChange={(e) => setEditPaymentMethod(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white text-xs font-semibold focus:outline-none focus:border-sky-500"
-                  >
-                    <option value="cash">💵 Наличные (в кассу студии)</option>
-                    <option value="card">💳 Банковская карта / Терминал</option>
-                    <option value="sbp">📱 Перевод СБП</option>
-                  </select>
-                </div>
-
-                {/* Заметка мастера */}
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <label className="block text-zinc-400 mb-1 font-medium">
-                    Заметка мастера / студии (не видна клиенту)
-                  </label>
-                  <textarea
-                    value={editNote}
-                    onChange={(e) => setEditNote(e.target.value)}
-                    placeholder="Заметки по автомобилю, пожелания клиента, особенности..."
-                    rows={2}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white text-xs resize-none focus:outline-none focus:border-sky-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 3 БЛОКА ФОТОГРАФИЙ */}
-            <div className="space-y-4">
-              <span className="text-xs font-semibold text-zinc-300 block uppercase tracking-wider">
-                Фотофиксация (3 блока)
-              </span>
-
-              {/* 1. Фотографии от клиента */}
-              <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-white text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                    <Camera className="w-3.5 h-3.5 text-sky-400" />
-                    1. Фотографии от клиента ({activeOrder.photos?.length || 0})
+            {/* 3. ВКЛАДКА 1: ОСНОВНОЕ И ОПЛАТА */}
+            {modalTab === 'main' && (
+              <div className="space-y-5">
+                {/* Состав услуг */}
+                <div className="space-y-2">
+                  <span className="text-[11px] font-semibold text-zinc-400 block uppercase tracking-wider">
+                    Выбранные услуги ({activeOrder.items?.length || 0})
                   </span>
-                </div>
-
-                {activeOrder.photos && activeOrder.photos.length > 0 ? (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
-                    {activeOrder.photos.map((p) => (
-                      <a
-                        key={p.id}
-                        href={`/api/photos/${p.id}?token=${activeOrder.token}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="aspect-video rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 block group relative"
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {activeOrder.items?.map((it, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between text-xs"
                       >
-                        <img
-                          src={`/api/photos/${p.id}?token=${activeOrder.token}`}
-                          alt="Фото клиента"
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                        />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
-                          <Eye className="w-4 h-4" />
+                        <div>
+                          <span className="text-zinc-200 font-medium">
+                            {it.name} {it.quantity > 1 ? `x${it.quantity}` : ''}
+                          </span>
+                          {it.customDescription && (
+                            <span className="text-[11px] text-sky-400 block">{it.customDescription}</span>
+                          )}
                         </div>
-                      </a>
+                        <span className="font-mono font-semibold text-white">
+                          {it.itemTotal?.toLocaleString('ru-RU')} ₽
+                        </span>
+                      </div>
                     ))}
                   </div>
-                ) : (
-                  <div className="py-2.5 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
-                    Клиент не прикреплял фото к онлайн-заявке
-                  </div>
-                )}
-              </div>
+                </div>
 
-              {/* 2 и 3: Фото «До» и «После» */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* 2. Фото «До» начала работ */}
+                {/* Чистая сетка 2 колонки */}
+                <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-4">
+                  <span className="text-[11px] font-semibold text-zinc-300 block uppercase tracking-wider">
+                    Параметры заезда и сумма
+                  </span>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
+                    {/* Строка 1, колонка 1: Дата заезда */}
+                    <div>
+                      <label className="block text-zinc-400 mb-1 font-medium">
+                        Дата заезда
+                      </label>
+                      <input
+                        id="agreed-entry-slot-input"
+                        type="date"
+                        value={editSlotDate}
+                        onChange={(e) => setEditSlotDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500 [color-scheme:dark]"
+                      />
+                    </div>
+
+                    {/* Строка 1, колонка 2: Время заезда */}
+                    <div>
+                      <label className="block text-zinc-400 mb-1 font-medium">
+                        Время заезда
+                      </label>
+                      <input
+                        type="time"
+                        value={editSlotTime}
+                        onChange={(e) => setEditSlotTime(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500 [color-scheme:dark]"
+                      />
+                    </div>
+
+                    {/* Строка 2, колонка 1: Итоговая сумма */}
+                    <div>
+                      <label className="block text-zinc-400 mb-1 font-medium">
+                        Итоговая сумма (₽)
+                      </label>
+                      <input
+                        type="number"
+                        value={editPrice}
+                        onChange={(e) => setEditPrice(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-sky-500"
+                      />
+                    </div>
+
+                    {/* Строка 2, колонка 2: Госномер авто */}
+                    <div>
+                      <label className="block text-zinc-400 mb-1 font-medium">
+                        Госномер авто
+                      </label>
+                      <input
+                        type="text"
+                        value={editPlate}
+                        onChange={(e) => setEditPlate(e.target.value.toUpperCase())}
+                        placeholder="А777АА 777"
+                        className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white font-mono font-bold text-xs focus:outline-none focus:border-sky-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Панель «Оплата в студии» с быстрыми кнопками */}
+                  <div className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="block text-zinc-200 font-bold text-xs">Оплата в студии</span>
+                        <span className="text-[11px] text-zinc-400">Способ расчёта и статус оплаты</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsPaid(!isPaid)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 self-start sm:self-auto ${
+                          isPaid
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white'
+                        }`}
+                      >
+                        <CheckCircle2 className={`w-3.5 h-3.5 ${isPaid ? 'text-emerald-400' : 'text-zinc-500'}`} />
+                        <span>{isPaid ? '✓ Оплачено' : 'Не оплачен'}</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1 border-t border-zinc-900 flex-wrap">
+                      <span className="text-[11px] text-zinc-400 mr-1">Способ:</span>
+                      <button
+                        type="button"
+                        onClick={() => setEditPaymentMethod('cash')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                          editPaymentMethod === 'cash'
+                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                            : 'bg-zinc-900 text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        💵 Наличные
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditPaymentMethod('card')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                          editPaymentMethod === 'card'
+                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                            : 'bg-zinc-900 text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        💳 Карта
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditPaymentMethod('sbp')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                          editPaymentMethod === 'sbp'
+                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                            : 'bg-zinc-900 text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        📱 СБП
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Поле «Заметка для мастеров» */}
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium text-xs">
+                      Заметка для мастеров (не видна клиенту)
+                    </label>
+                    <textarea
+                      value={editNote}
+                      onChange={(e) => setEditNote(e.target.value)}
+                      placeholder="Особенности автомобиля, пожелания клиента, код домофона..."
+                      rows={2}
+                      className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-white text-xs resize-none focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 4. ВКЛАДКА 2: ФОТООТЧЁТ */}
+            {modalTab === 'photos' && (
+              <div className="space-y-4">
+                {/* Фото клиента при заявке */}
                 <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-white text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                      <Camera className="w-3.5 h-3.5 text-amber-400" />
-                      2. Фото «До» приёмки ({photosBefore.length})
+                      <Camera className="w-3.5 h-3.5 text-sky-400" />
+                      Фото клиента при заявке ({activeOrder.photos?.length || 0})
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => fileInputBeforeRef.current?.click()}
-                      disabled={uploadingPhoto}
-                      className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-[11px] flex items-center gap-1 transition-colors"
-                    >
-                      <Upload className="w-3 h-3" />
-                      <span>+ Добавить</span>
-                    </button>
-                    <input
-                      ref={fileInputBeforeRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      className="hidden"
-                      onChange={(e) => handlePhotoUpload(e, 'before')}
-                    />
                   </div>
 
-                  {photosBefore.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      {photosBefore.map((p) => (
-                        <div key={p.id} className="relative aspect-video rounded-lg overflow-hidden border border-zinc-800 group bg-zinc-950">
-                          <img src={`/api/photos/${p.id}?token=${activeOrder.token}`} alt="До" className="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            onClick={() => setPhotosBefore((prev) => prev.filter((item) => item.id !== p.id))}
-                            className="absolute top-1 right-1 p-1 rounded bg-black/60 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Удалить фото"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
+                  {activeOrder.photos && activeOrder.photos.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      {activeOrder.photos.map((p) => (
+                        <a
+                          key={p.id}
+                          href={`/api/photos/${p.id}?token=${activeOrder.token}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="aspect-video rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 block group relative"
+                        >
+                          <img
+                            src={`/api/photos/${p.id}?token=${activeOrder.token}`}
+                            alt="Фото клиента"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                            <Eye className="w-4 h-4" />
+                          </div>
+                        </a>
                       ))}
                     </div>
                   ) : (
-                    <div className="py-2.5 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
-                      Нет загруженных фото «До»
+                    <div className="py-3 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
+                      Клиент не прикреплял фото к онлайн-заявке
                     </div>
                   )}
                 </div>
 
-                {/* 3. Фото «После» детейлинга */}
-                <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-white text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                      <Camera className="w-3.5 h-3.5 text-emerald-400" />
-                      3. Фото «После» ({photosAfter.length})
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => fileInputAfterRef.current?.click()}
-                      disabled={uploadingPhoto}
-                      className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-[11px] flex items-center gap-1 transition-colors"
-                    >
-                      <Upload className="w-3 h-3" />
-                      <span>+ Добавить</span>
-                    </button>
-                    <input
-                      ref={fileInputAfterRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      className="hidden"
-                      onChange={(e) => handlePhotoUpload(e, 'after')}
-                    />
+                {/* Фото «До» и «После» */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Фото ДО приёмки */}
+                  <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                        <Camera className="w-3.5 h-3.5 text-amber-400" />
+                        Фото ДО приёмки ({photosBefore.length})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => fileInputBeforeRef.current?.click()}
+                        disabled={uploadingPhoto}
+                        className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-[11px] flex items-center gap-1 transition-colors"
+                      >
+                        <Upload className="w-3 h-3" />
+                        <span>+ Добавить</span>
+                      </button>
+                      <input
+                        ref={fileInputBeforeRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => handlePhotoUpload(e, 'before')}
+                      />
+                    </div>
+
+                    {photosBefore.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {photosBefore.map((p) => (
+                          <div key={p.id} className="relative aspect-video rounded-lg overflow-hidden border border-zinc-800 group bg-zinc-950">
+                            <img
+                              src={`/api/photos/${p.id}?token=${activeOrder.token}`}
+                              alt="До"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                              }}
+                              className="w-full h-full object-cover"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setPhotosBefore((prev) => prev.filter((item) => item.id !== p.id))}
+                              className="absolute top-1 right-1 p-1 rounded bg-black/60 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Удалить фото"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-3 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
+                        Нет загруженных фото «До»
+                      </div>
+                    )}
                   </div>
 
-                  {photosAfter.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      {photosAfter.map((p) => (
-                        <div key={p.id} className="relative aspect-video rounded-lg overflow-hidden border border-emerald-500/30 group bg-zinc-950">
-                          <img src={`/api/photos/${p.id}?token=${activeOrder.token}`} alt="После" className="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            onClick={() => setPhotosAfter((prev) => prev.filter((item) => item.id !== p.id))}
-                            className="absolute top-1 right-1 p-1 rounded bg-black/60 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Удалить фото"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
+                  {/* Фото ПОСЛЕ работ */}
+                  <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                        <Camera className="w-3.5 h-3.5 text-emerald-400" />
+                        Фото ПОСЛЕ работ ({photosAfter.length})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => fileInputAfterRef.current?.click()}
+                        disabled={uploadingPhoto}
+                        className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-[11px] flex items-center gap-1 transition-colors"
+                      >
+                        <Upload className="w-3 h-3" />
+                        <span>+ Добавить</span>
+                      </button>
+                      <input
+                        ref={fileInputAfterRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => handlePhotoUpload(e, 'after')}
+                      />
                     </div>
-                  ) : (
-                    <div className="py-2.5 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
-                      Нет загруженных фото «После»
-                    </div>
-                  )}
+
+                    {photosAfter.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {photosAfter.map((p) => (
+                          <div key={p.id} className="relative aspect-video rounded-lg overflow-hidden border border-emerald-500/30 group bg-zinc-950">
+                            <img
+                              src={`/api/photos/${p.id}?token=${activeOrder.token}`}
+                              alt="После"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                              }}
+                              className="w-full h-full object-cover"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setPhotosAfter((prev) => prev.filter((item) => item.id !== p.id))}
+                              className="absolute top-1 right-1 p-1 rounded bg-black/60 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Удалить фото"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-3 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
+                        Нет загруженных фото «После»
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {modalError && (
               <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
@@ -1547,69 +1731,24 @@ export default function AdminOrdersPage() {
               </div>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-800">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] text-zinc-500 mr-1">Статус:</span>
-                <button
-                  type="button"
-                  onClick={() => handleSaveModal('new')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${activeOrder.status === 'new' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-zinc-900 text-zinc-400 hover:text-white'}`}
-                >
-                  Новый
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSaveModal('agreed')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${activeOrder.status === 'agreed' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' : 'bg-zinc-900 text-zinc-400 hover:text-white'}`}
-                >
-                  Подтверждён
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSaveModal('in_progress')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${activeOrder.status === 'in_progress' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-zinc-900 text-zinc-400 hover:text-white'}`}
-                >
-                  В боксе
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSaveModal('completed')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${activeOrder.status === 'completed' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-zinc-900 text-zinc-400 hover:text-white'}`}
-                >
-                  Готов к выдаче
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const reason = prompt('Укажите причину отмены или No-Show (неявка клиента):', 'Клиент отменил визит по телефону');
-                    if (reason !== null) {
-                      handleSaveModal('cancelled', reason);
-                    }
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${activeOrder.status === 'cancelled' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-zinc-900 text-zinc-500 hover:text-rose-400'}`}
-                >
-                  Отменён / No-Show
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveOrder(null)}
-                  className="px-4 py-2 rounded-xl text-xs text-zinc-400 hover:text-white"
-                >
-                  Закрыть
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSaveModal()}
-                  disabled={savingOrder}
-                  className="px-4 py-2 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>{savingOrder ? 'Сохранение...' : 'Сохранить изменения'}</span>
-                </button>
-              </div>
+            {/* 5. НИЖНЯЯ ПАНЕЛЬ ДЕЙСТВИЙ */}
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setActiveOrder(null)}
+                className="px-4 py-2 rounded-xl text-xs text-zinc-400 hover:text-white"
+              >
+                Закрыть
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveModal()}
+                disabled={savingOrder}
+                className="px-5 py-2.5 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{savingOrder ? 'Сохранение...' : 'Сохранить изменения'}</span>
+              </button>
             </div>
           </div>
         </div>
