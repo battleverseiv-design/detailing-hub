@@ -374,12 +374,11 @@ export default function AdminOrdersPage() {
   const stats = useMemo(() => {
     const totalCount = orders.length;
     const pendingCount = orders.filter((o) => o.status === 'new').length;
-    const agreedCount = orders.filter((o) => o.status === 'agreed').length;
-    const paidCount = orders.filter((o) => Boolean(o.isPaid)).length;
-    const paidCompletedOrders = orders.filter((o) => o.status === 'completed' && Boolean(o.isPaid));
-    const revenue = paidCompletedOrders.reduce((sum, o) => sum + (o.agreedFinalPrice || o.preliminaryTotal), 0);
+    const agreedCount = orders.filter((o) => o.status === 'agreed' || o.status === 'in_progress').length;
+    const completedOrders = orders.filter((o) => o.status === 'completed');
+    const revenue = completedOrders.reduce((sum, o) => sum + (o.agreedFinalPrice || o.preliminaryTotal), 0);
 
-    return { totalCount, pendingCount, agreedCount, revenue, paidCount };
+    return { totalCount, pendingCount, agreedCount, revenue };
   }, [orders]);
 
   // Быстрое изменение статуса прямо из карточки
@@ -574,10 +573,10 @@ export default function AdminOrdersPage() {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
               <Inbox className="w-6 h-6 text-sky-400" />
-              Записи, цифровые акты и P&L аналитика
+              Записи
             </h1>
             <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-              Оперативное управление заказами, расчет чистой прибыли с учетом расходников и оформление актов приёмки авто
+              Управление записями и заказами клиентов
             </p>
           </div>
 
@@ -591,10 +590,10 @@ export default function AdminOrdersPage() {
           </button>
         </div>
 
-        {/* Метрики */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        {/* Метрики: Всего, Ожидают, В работе, Прибыль */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800">
-            <span className="text-[11px] font-medium text-zinc-400 block mb-1">Всего заявок</span>
+            <span className="text-[11px] font-medium text-zinc-400 block mb-1">Всего</span>
             <span className="text-2xl font-extrabold text-white tracking-tight font-mono">
               {stats.totalCount}
             </span>
@@ -602,7 +601,7 @@ export default function AdminOrdersPage() {
 
           <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-medium text-amber-400 block mb-1">Ожидают записи</span>
+              <span className="text-[11px] font-medium text-amber-400 block mb-1">Ожидают</span>
               {stats.pendingCount > 0 && (
                 <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
               )}
@@ -613,26 +612,16 @@ export default function AdminOrdersPage() {
           </div>
 
           <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800">
-            <span className="text-[11px] font-medium text-sky-400 block mb-1">В работе / Согласованы</span>
+            <span className="text-[11px] font-medium text-sky-400 block mb-1">В работе</span>
             <span className="text-2xl font-extrabold text-sky-300 tracking-tight font-mono">
               {stats.agreedCount}
             </span>
           </div>
 
           <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800">
-            <span className="text-[11px] font-medium text-emerald-400 block mb-1">Выручка (выполнены)</span>
+            <span className="text-[11px] font-medium text-emerald-400 block mb-1">Прибыль</span>
             <span className="text-2xl font-extrabold text-emerald-300 tracking-tight font-mono">
               {stats.revenue.toLocaleString('ru-RU')} ₽
-            </span>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-zinc-900/60 border border-emerald-900/40 col-span-2 lg:col-span-1 bg-gradient-to-br from-zinc-900/80 to-emerald-950/20">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-emerald-400 block mb-1">Оплачено в студии</span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            </div>
-            <span className="text-2xl font-extrabold text-emerald-400 tracking-tight font-mono">
-              {stats.paidCount} заказов
             </span>
           </div>
         </div>
