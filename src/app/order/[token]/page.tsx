@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
-import { getStudioSettings } from '@/lib/studio-service';
+import { getPublicSettings } from '@/lib/studio-service';
 import { CartItem, OrderPhoto } from '@/types';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
@@ -43,7 +43,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
 
   if (!order) notFound();
 
-  const settings = await getStudioSettings();
+  const settings = await getPublicSettings();
 
   const items: CartItem[] = JSON.parse(order.itemsJson || '[]');
   const photos: OrderPhoto[] = JSON.parse(order.photosJson || '[]');

@@ -226,6 +226,18 @@ export async function testTelegramConnection(
 }
 
 /**
+ * Экранирование пользовательского текста для parse_mode=HTML.
+ * Без него символ «<» в имени клиента ломает отправку (Telegram отвечает 400),
+ * а теги <a href> позволяют подсунуть владельцу фишинговую ссылку.
+ */
+export function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
  * Уведомление о создании новой заявки / записи
  */
 export async function notifyNewOrder(order: {
@@ -261,19 +273,19 @@ export async function notifyNewOrder(order: {
     }
   }
 
-  const itemsList = order.items?.map((it) => `• ${it.name}`).join('\n') || 'Комплекс услуг';
+  const itemsList = order.items?.map((it) => `• ${escapeHtml(it.name)}`).join('\n') || 'Комплекс услуг';
   const orderUrl = `${baseUrl}/order/${order.token}`;
   const adminUrl = `${baseUrl}/admin/orders`;
 
   const msg = `
 🚗 <b>НОВАЯ ЗАЯВКА НА ДЕТЕЙЛИНГ #${order.id.slice(-6).toUpperCase()}</b>
 
-👤 <b>Клиент:</b> ${order.clientName}
-📞 <b>Телефон:</b> ${order.clientPhone}
-🏎 <b>Авто:</b> ${order.carBrandModel} (Класс ${order.carClass})
+👤 <b>Клиент:</b> ${escapeHtml(order.clientName)}
+📞 <b>Телефон:</b> ${escapeHtml(order.clientPhone)}
+🏎 <b>Авто:</b> ${escapeHtml(order.carBrandModel)} (Класс ${escapeHtml(order.carClass)})
 💰 <b>Сумма:</b> ${order.preliminaryTotal.toLocaleString('ru-RU')} ₽
-📍 <b>Формат:</b> ${order.serviceFormat === 'mobile' ? `Выезд: ${order.deliveryAddress || 'адрес согласуется'}` : 'В студии'}
-⏰ <b>Время:</b> ${order.agreedEntryDateTime || `${order.desiredDate || 'Дата не выбрана'} ${order.desiredTime || ''}`}
+📍 <b>Формат:</b> ${order.serviceFormat === 'mobile' ? `Выезд: ${escapeHtml(order.deliveryAddress || 'адрес согласуется')}` : 'В студии'}
+⏰ <b>Время:</b> ${escapeHtml(order.agreedEntryDateTime || `${order.desiredDate || 'Дата не выбрана'} ${order.desiredTime || ''}`)}
 
 <b>Услуги:</b>
 ${itemsList}
@@ -317,7 +329,7 @@ export async function notifyOrderStatusChanged(order: {
 
   let statusText = 'Обновлен статус заказа';
   if (order.status === 'agreed') {
-    statusText = `✅ <b>Запись подтверждена!</b>\nЖдём вас: <b>${order.agreedEntryDateTime || 'по согласованию'}</b>`;
+    statusText = `✅ <b>Запись подтверждена!</b>\nЖдём вас: <b>${escapeHtml(order.agreedEntryDateTime || 'по согласованию')}</b>`;
   } else if (order.status === 'completed') {
     statusText = `✨ <b>Автомобиль готов к выдаче!</b>\nВсе работы по детейлингу успешно завершены.`;
   } else if (order.status === 'cancelled') {
@@ -325,8 +337,8 @@ export async function notifyOrderStatusChanged(order: {
   }
 
   const msg = `
-Уважаемый(ая) ${order.clientName}!
-По вашей записи на автомобиль <b>${order.carBrandModel}</b>:
+Уважаемый(ая) ${escapeHtml(order.clientName)}!
+По вашей записи на автомобиль <b>${escapeHtml(order.carBrandModel)}</b>:
 
 ${statusText}
 

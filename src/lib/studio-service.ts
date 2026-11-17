@@ -74,6 +74,27 @@ export async function getStudioSettings(): Promise<StudioSettings> {
 }
 
 /**
+ * Публичные настройки студии — БЕЗ секретов (токен бота, chat id, URL прокси Telegram).
+ * Только эту функцию можно вызывать в серверных компонентах, которые передают данные
+ * в клиентские компоненты (props сериализуются в HTML/RSC-payload и видны любому посетителю).
+ * Полный getStudioSettings() — только для API-роутов и серверной логики.
+ */
+export type PublicStudioSettings = Omit<
+  StudioSettings,
+  'telegramBotToken' | 'telegramChatId' | 'telegramApiUrl'
+>;
+
+export async function getPublicSettings(): Promise<PublicStudioSettings> {
+  const {
+    telegramBotToken: _token,
+    telegramChatId: _chatId,
+    telegramApiUrl: _apiUrl,
+    ...publicSettings
+  } = await getStudioSettings();
+  return publicSettings;
+}
+
+/**
  * Автоматическая синхронизация тарифов студии в таблицу Prisma Service
  * Гарантирует Единый Источник Правды для календаря, двухфазных таймингов и постов (Workbays)
  */

@@ -1,5 +1,5 @@
 import { prisma } from './db';
-import { Workbay } from '@prisma/client';
+import { Prisma, Workbay } from '@prisma/client';
 import { addMinutes, addDays, isBefore, isAfter, areIntervalsOverlapping, differenceInMinutes } from 'date-fns';
 import { getStudioWorkbays } from './studio-service';
 
@@ -171,8 +171,16 @@ export async function calculateMultiDayTimeline(params: {
   let remainingActiveMin = activeMinutes;
   let isMultiDay = false;
 
+  // Защита от бесконечного цикла: если в графике нет рабочих дней или start == end,
+  // раньше цикл не завершался и каждый проход делал запросы к БД.
+  const MAX_SCHEDULE_STEPS = 60;
+  let scheduleSteps = 0;
+
   // 1. Расчет активной работы мастера
   while (remainingActiveMin > 0) {
+    if (++scheduleSteps > MAX_SCHEDULE_STEPS) {
+      throw new Error('SCHEDULE_UNAVAILABLE');
+    }
     const schedule = await getScheduleForDate(userId, currentCursor);
 
     if (!schedule.isWorkingDay) {
@@ -400,13 +408,22 @@ export async function getAvailableSlots(params: {
     }
 
     // Рассчитываем фазы бронирования для этого слота
-    const timeline = await calculateMultiDayTimeline({
-      userId: user.id,
-      startAt: currentSlotStart,
-      activeMinutes,
-      cureMinutes,
-      bufferMinutes,
-    });
+    let timeline: Awaited<ReturnType<typeof calculateMultiDayTimeline>>;
+    try {
+      timeline = await calculateMultiDayTimeline({
+        userId: user.id,
+        startAt: currentSlotStart,
+        activeMinutes,
+        cureMinutes,
+        bufferMinutes,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message === 'SCHEDULE_UNAVAILABLE') {
+        currentSlotStart = addMinutes(currentSlotStart, 30);
+        continue;
+      }
+      throw err;
+    }
 
     // Ищем хотя бы один свободный подходящий бокс
     let assignedBay: typeof suitableBays[0] | null = null;
@@ -478,10 +495,24 @@ export async function getAvailableSlots(params: {
   };
 }
 
-/**
- * Создание записи клиента в транзакции с резервированием бокса и фаз
- */
-export async function createBookingWithTransaction(data: {
+// ---------------------------------------------------------------------------
+// СОЗДАНИЕ БРОНИ
+//
+// Разделено на две фазы, чтобы транзакция была короткой и защищённой от гонок:
+//   1) prepareBooking()  — чтение конфигурации (услуги, график), расчёт таймлайна.
+//                          Выполняется ДО транзакции: на SQLite внутри интерактивной
+//                          транзакции нельзя использовать глобальный prisma (один коннект).
+//   2) commitBooking()   — внутри транзакции: проверка занятости + запись.
+//
+// Коды ошибок: USER_NOT_FOUND, SERVICE_NOT_FOUND, INVALID_DATE, SCHEDULE_UNAVAILABLE,
+//              SLOT_ALREADY_BOOKED (занят мастер), BAY_ALREADY_OCCUPIED (занят выбранный
+//              бокс), NO_FREE_BAY (нет свободного подходящего бокса), BAY_NOT_FOUND.
+// ---------------------------------------------------------------------------
+
+const ACTIVE_BOOKING_STATUSES = ['pending', 'confirmed', 'in_progress'];
+const BOOKING_LOCK_KEY = 7301001; // ключ advisory-lock для PostgreSQL
+
+export interface BookingInput {
   userIdOrSlug: string;
   serviceId?: string;
   serviceIds?: string[];
@@ -498,7 +529,35 @@ export async function createBookingWithTransaction(data: {
     cureMinutes?: number;
     bufferMinutes?: number;
   };
-}) {
+}
+
+export interface PreparedBooking {
+  userId: string;
+  serviceId: string;
+  requiredBayType: string;
+  workbayId?: string;
+  startDate: Date;
+  timeline: {
+    activeWorkEndAt: Date;
+    cureEndAt: Date;
+    bayEndAt: Date;
+    isMultiDay: boolean;
+  };
+  clientName: string;
+  clientPhone: string;
+  clientEmail: string | null;
+  notes: string | null;
+  orderId?: string;
+}
+
+function rangesOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
+  return aStart < bEnd && bStart < aEnd;
+}
+
+/**
+ * Фаза 1: подготовка (вне транзакции).
+ */
+export async function prepareBooking(data: BookingInput): Promise<PreparedBooking> {
   const {
     userIdOrSlug,
     serviceId,
@@ -515,20 +574,14 @@ export async function createBookingWithTransaction(data: {
   } = data;
 
   const user = await prisma.user.findFirst({
-    where: {
-      OR: [{ id: userIdOrSlug }, { slug: userIdOrSlug }],
-    },
-    include: {
-      services: true,
-    },
+    where: { OR: [{ id: userIdOrSlug }, { slug: userIdOrSlug }] },
+    include: { services: true },
   });
-
   if (!user) throw new Error('USER_NOT_FOUND');
 
-  // Определяем список услуг (поддерживает суммирование нескольких услуг из корзины)
-  const targetIds = serviceIds && serviceIds.length > 0
-    ? serviceIds
-    : [serviceId].filter(Boolean) as string[];
+  // Список услуг (поддерживает суммирование нескольких услуг из корзины)
+  const targetIds =
+    serviceIds && serviceIds.length > 0 ? serviceIds : ([serviceId].filter(Boolean) as string[]);
 
   const matchedServices: any[] = [];
   for (const tid of targetIds) {
@@ -538,19 +591,28 @@ export async function createBookingWithTransaction(data: {
     }
   }
 
-  const primaryService = matchedServices[0] || resolveBookingService(user.services, serviceId) || user.services[0];
+  const primaryService =
+    matchedServices[0] || resolveBookingService(user.services, serviceId) || user.services[0];
   if (!primaryService) throw new Error('SERVICE_NOT_FOUND');
 
   const startDate = new Date(startAt);
   if (isNaN(startDate.getTime())) throw new Error('INVALID_DATE');
 
-  const classMultiplier = carClass === 'OTHER' ? 1.5 : carClass === 'L' ? 1.35 : carClass === 'M' ? 1.2 : 1.0;
+  const classMultiplier =
+    carClass === 'OTHER' ? 1.5 : carClass === 'L' ? 1.35 : carClass === 'M' ? 1.2 : 1.0;
 
-  // Суммируем длительность всех выбранных услуг
+  // Тип бокса определяется по ВСЕМ услугам одинаково с getAvailableSlots()
+  // (раньше при customDuration учитывалась только первая услуга -> разные боксы в слотах и в брони).
+  let requiredBayType = primaryService.requiredBayType || 'any';
+  for (const s of matchedServices) {
+    if (s.requiredBayType && s.requiredBayType !== 'any') {
+      requiredBayType = s.requiredBayType;
+    }
+  }
+
   let activeMinutes = 0;
   let cureMinutes = 0;
   let bufferMinutes = 15;
-  let requiredBayType = primaryService.requiredBayType || 'any';
 
   if (customDuration?.activeMinutes != null && customDuration.activeMinutes > 0) {
     activeMinutes = Math.round(customDuration.activeMinutes * classMultiplier);
@@ -561,17 +623,15 @@ export async function createBookingWithTransaction(data: {
       activeMinutes += Math.round((s.activeDurationMinutes || s.durationMinutes || 60) * classMultiplier);
       cureMinutes = Math.max(cureMinutes, s.cureDurationMinutes || 0);
       bufferMinutes = Math.max(bufferMinutes, s.bufferMinutes || 15);
-      if (s.requiredBayType && s.requiredBayType !== 'any') {
-        requiredBayType = s.requiredBayType;
-      }
     }
   } else {
-    activeMinutes = Math.round((primaryService.activeDurationMinutes || primaryService.durationMinutes || 60) * classMultiplier);
+    activeMinutes = Math.round(
+      (primaryService.activeDurationMinutes || primaryService.durationMinutes || 60) * classMultiplier
+    );
     cureMinutes = primaryService.cureDurationMinutes || 0;
     bufferMinutes = primaryService.bufferMinutes || 15;
   }
 
-  // Рассчитываем фазы бронирования
   const timeline = await calculateMultiDayTimeline({
     userId: user.id,
     startAt: startDate,
@@ -580,104 +640,164 @@ export async function createBookingWithTransaction(data: {
     bufferMinutes,
   });
 
-  return await prisma.$transaction(async (tx) => {
-    // 1. Поиск подходящего и свободного бокса
-    let targetBayId = workbayId;
+  return {
+    userId: user.id,
+    serviceId: primaryService.id,
+    requiredBayType,
+    workbayId: workbayId || undefined,
+    startDate,
+    timeline,
+    clientName: clientName.trim(),
+    clientPhone: clientPhone.trim(),
+    clientEmail: clientEmail?.trim() || null,
+    notes: notes?.trim() || null,
+    orderId,
+  };
+}
 
-    if (!targetBayId) {
-      const activeBays = await tx.workbay.findMany({
-        where: { isActive: true },
-        orderBy: { order: 'asc' },
-      });
+/**
+ * Фаза 2: проверка занятости и запись. ВЫЗЫВАТЬ ТОЛЬКО внутри runBookingTransaction().
+ * Бросает исключение при любом конфликте — вызывающий код откатывает всю транзакцию
+ * (включая заказ, если он создавался в той же транзакции).
+ */
+export async function commitBooking(tx: Prisma.TransactionClient, p: PreparedBooking) {
+  const { startDate, timeline } = p;
 
-      for (const bay of activeBays) {
-        if (!isBaySuitable(bay.type, requiredBayType)) continue;
-
-        const bayConflict = await tx.booking.findFirst({
-          where: {
-            workbayId: bay.id,
-            status: { in: ['pending', 'confirmed', 'in_progress'] },
-            startAt: { lt: timeline.bayEndAt },
-            endAt: { gt: startDate },
-          },
-        });
-
-        if (!bayConflict) {
-          targetBayId = bay.id;
-          break;
-        }
-      }
-    } else {
-      // Проверка указанного бокса на коллизию
-      const bayConflict = await tx.booking.findFirst({
-        where: {
-          workbayId: targetBayId,
-          status: { in: ['pending', 'confirmed', 'in_progress'] },
-          startAt: { lt: timeline.bayEndAt },
-          endAt: { gt: startDate },
-        },
-      });
-
-      if (bayConflict) {
-        throw new Error('BAY_ALREADY_OCCUPIED');
-      }
-    }
-
-    // 2. Проверка занятости мастера в активной фазе
-    const masterConflict = await tx.booking.findFirst({
-      where: {
-        userId: user.id,
-        status: { in: ['pending', 'confirmed', 'in_progress'] },
-        startAt: { lt: timeline.activeWorkEndAt },
-        endAt: { gt: startDate },
-      },
-    });
-
-    if (masterConflict) {
-      // Проверяем, свободен ли мастер во время активной фазы
-      const activeEnd = masterConflict.activeWorkEndAt ? new Date(masterConflict.activeWorkEndAt) : new Date(masterConflict.endAt);
-      if (areIntervalsOverlapping({ start: startDate, end: timeline.activeWorkEndAt }, { start: new Date(masterConflict.startAt), end: activeEnd })) {
-        throw new Error('SLOT_ALREADY_BOOKED');
-      }
-    }
-
-    // 3. Создание брони с фазами и привязкой к боксу
-    const booking = await tx.booking.create({
-      data: {
-        userId: user.id,
-        serviceId: primaryService.id,
-        workbayId: targetBayId || null,
-        clientName: clientName.trim(),
-        clientPhone: clientPhone.trim(),
-        clientEmail: clientEmail?.trim() || null,
-        startAt: startDate,
-        endAt: timeline.bayEndAt,
-        activeWorkEndAt: timeline.activeWorkEndAt,
-        cureEndAt: timeline.cureEndAt,
-        isMultiDay: timeline.isMultiDay,
-        status: 'confirmed',
-        notes: notes?.trim() || null,
-      },
-      include: {
-        service: true,
-        workbay: true,
-        user: {
-          select: { id: true, name: true, phone: true, timezone: true, slug: true },
-        },
-      },
-    });
-
-    // 4. Если передан orderId, привязываем заказ к этой брони
-    if (orderId) {
-      await tx.order.update({
-        where: { id: orderId },
-        data: {
-          bookingId: booking.id,
-          agreedEntryDateTime: startDate.toISOString(),
-        },
-      });
-    }
-
-    return booking;
+  // Все активные брони, пересекающиеся с полным окном новой брони.
+  // Это надмножество и конфликтов по боксу, и конфликтов по мастеру:
+  // активная фаза любой брони лежит внутри её полного интервала.
+  const rivals = await tx.booking.findMany({
+    where: {
+      userId: p.userId,
+      status: { in: ACTIVE_BOOKING_STATUSES },
+      startAt: { lt: timeline.bayEndAt },
+      endAt: { gt: startDate },
+    },
+    select: { id: true, workbayId: true, startAt: true, endAt: true, activeWorkEndAt: true },
   });
+
+  // 1. Мастер занят только в активной фазе. Проверяем ВСЕ брони, а не первую найденную.
+  const masterBusy = rivals.some((b) =>
+    rangesOverlap(
+      startDate,
+      timeline.activeWorkEndAt,
+      new Date(b.startAt),
+      b.activeWorkEndAt ? new Date(b.activeWorkEndAt) : new Date(b.endAt)
+    )
+  );
+  if (masterBusy) throw new Error('SLOT_ALREADY_BOOKED');
+
+  // 2. Подбор бокса: только активные боксы подходящего типа.
+  const activeBays = await tx.workbay.findMany({
+    where: { isActive: true },
+    orderBy: { order: 'asc' },
+  });
+
+  // Явно перепроверяем пересечение с полным окном брони (защита в глубину: не полагаемся
+  // только на фильтр запроса, чтобы «касающиеся» интервалы 13:15|13:15 не считались занятыми).
+  const busyBayIds = new Set(
+    rivals
+      .filter((b) => rangesOverlap(startDate, timeline.bayEndAt, new Date(b.startAt), new Date(b.endAt)))
+      .map((b) => b.workbayId)
+      .filter(Boolean) as string[]
+  );
+
+  let targetBayId: string;
+  if (p.workbayId) {
+    const requested = activeBays.find((b) => b.id === p.workbayId);
+    // Тип бокса для явно выбранного поста не навязываем: админ может осознанно поставить
+    // машину в любой активный бокс. Автоподбор ниже тип учитывает.
+    if (!requested) throw new Error('BAY_NOT_FOUND');
+    if (busyBayIds.has(requested.id)) throw new Error('BAY_ALREADY_OCCUPIED');
+    targetBayId = requested.id;
+  } else {
+    const free = activeBays.find(
+      (b) => isBaySuitable(b.type, p.requiredBayType) && !busyBayIds.has(b.id)
+    );
+    // Раньше здесь создавалась бронь с workbayId = null и БЕЗ проверки конфликтов.
+    if (!free) throw new Error('NO_FREE_BAY');
+    targetBayId = free.id;
+  }
+
+  // 3. Запись брони
+  const booking = await tx.booking.create({
+    data: {
+      userId: p.userId,
+      serviceId: p.serviceId,
+      workbayId: targetBayId,
+      clientName: p.clientName,
+      clientPhone: p.clientPhone,
+      clientEmail: p.clientEmail,
+      startAt: startDate,
+      endAt: timeline.bayEndAt,
+      activeWorkEndAt: timeline.activeWorkEndAt,
+      cureEndAt: timeline.cureEndAt,
+      isMultiDay: timeline.isMultiDay,
+      status: 'confirmed',
+      notes: p.notes,
+    },
+    include: {
+      service: true,
+      workbay: true,
+      user: { select: { id: true, name: true, phone: true, timezone: true, slug: true } },
+    },
+  });
+
+  // 4. Привязка заказа
+  if (p.orderId) {
+    await tx.order.update({
+      where: { id: p.orderId },
+      data: { bookingId: booking.id, agreedEntryDateTime: startDate.toISOString() },
+    });
+  }
+
+  return booking;
+}
+
+/**
+ * Запускает транзакцию записи с сериализацией конкурентных попыток.
+ *  - PostgreSQL: advisory-lock на уровне транзакции + isolation Serializable.
+ *    (По умолчанию READ COMMITTED допускает «проверил — оба записали».)
+ *  - SQLite: поддерживается только Serializable, записи и так сериализуются файлом БД.
+ *  - Конфликты сериализации (P2034) повторяются до 3 раз с небольшой паузой.
+ */
+export async function runBookingTransaction<T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>
+): Promise<T> {
+  const isPostgres = /^postgres(ql)?:/i.test(process.env.DATABASE_URL || '');
+  const MAX_ATTEMPTS = 3;
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          if (isPostgres) {
+            // Константа, пользовательского ввода нет — Unsafe безопасен.
+            await tx.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(${BOOKING_LOCK_KEY})`);
+          }
+          return fn(tx);
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5000,
+          timeout: 10000,
+        }
+      );
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === 'P2034' && attempt < MAX_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, 50 * attempt + Math.random() * 50));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+/**
+ * Совместимый враппер для /api/bookings: создать только бронь (без заказа).
+ */
+export async function createBookingWithTransaction(data: BookingInput) {
+  const prepared = await prepareBooking(data);
+  return runBookingTransaction((tx) => commitBooking(tx, prepared));
 }
