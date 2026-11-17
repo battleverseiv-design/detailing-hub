@@ -219,6 +219,37 @@ export default function AdminStudioPage() {
               className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
             />
           </div>
+
+          {/* Фото детейлинг-бокса на фоне главного экрана */}
+          <div className="pt-2 border-t border-zinc-800/60">
+            <label className="block text-xs font-bold text-zinc-300 mb-1">
+              Фоновое фото детейлинг-бокса (Hero Background)
+            </label>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <div className="w-full sm:flex-1">
+                <input
+                  type="text"
+                  value={settings.heroBackgroundImage || ''}
+                  onChange={(e) => setSettings({ ...settings, heroBackgroundImage: e.target.value })}
+                  placeholder="/images/studio-hero-bg.jpg или ссылка на фото бокса"
+                  className="min-h-[44px] w-full px-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-base sm:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+                <span className="text-[11px] text-zinc-400 mt-1 block">
+                  URL фотографии вашего детейлинг-бокса. Если поле пустое — используется фирменный темный фон студии с диодным освещением.
+                </span>
+              </div>
+              <div className="relative w-28 h-16 rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900 shrink-0">
+                <img
+                  src={settings.heroBackgroundImage || '/images/studio-hero-bg.jpg'}
+                  alt="Превью фона"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                  <span className="text-[10px] font-bold text-zinc-300 bg-black/60 px-1.5 py-0.5 rounded">Превью</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* 2. Контакты и локация */}

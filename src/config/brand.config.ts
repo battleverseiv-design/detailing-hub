@@ -41,6 +41,7 @@ export interface BrandConfig {
   currency: string; // "₽"
   workHours: string;
   accentColor: string;
+  heroBackgroundImage?: string;
   
   // Условия обслуживания
   mobileServiceEnabled: boolean;
@@ -93,6 +94,7 @@ export const DEFAULT_BRAND_CONFIG: BrandConfig = {
   currency: '₽',
   workHours: 'Ежедневно с 09:00 до 21:00',
   accentColor: '#0284c7',
+  heroBackgroundImage: '/images/studio-hero-bg.jpg',
 
   classMultipliers: {
     S: 1.0,
@@ -163,8 +165,8 @@ export const DEFAULT_BRAND_CONFIG: BrandConfig = {
       id: 'interior_leather',
       title: 'Глубокая химчистка премиум-кожи',
       description: 'Очистка пор от въевшегося жира и пота. Восстановление заводской матовой бархатистой текстуры.',
-      beforeImage: '/images/before-after/interior_before.jpg?v=v4',
-      afterImage: '/images/before-after/interior_after.jpg?v=v4',
+      beforeImage: '/images/before-after/interior_before.jpg?v=v6',
+      afterImage: '/images/before-after/interior_after.jpg?v=v6',
       beforeLabel: 'До чистки',
       afterLabel: 'После кондиционера',
     },

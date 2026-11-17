@@ -326,20 +326,32 @@ export function StudioClientApp({ settings }: StudioClientAppProps) {
           <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12 space-y-10">
         
         {/* HERO БЛОК В СТИЛЕ APPLE & LINEAR */}
-        <section className="relative text-center space-y-4 pt-4 sm:pt-8 overflow-hidden">
-          {/* Диффузная мягкая подсветка детейлинг-бокса */}
-          <div className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-[650px] max-w-[100vw] h-[280px] bg-gradient-to-b from-sky-500/15 via-sky-600/5 to-transparent blur-[120px] rounded-full" />
+        <section className="relative text-center space-y-4 pt-6 sm:pt-10 pb-4 overflow-hidden rounded-3xl">
+          {/* Атмосферный фон детейлинг-бокса студии */}
+          <div className="pointer-events-none absolute inset-0 -top-6 h-full w-full overflow-hidden rounded-3xl z-0">
+            <img
+              src={settings.heroBackgroundImage || '/images/studio-hero-bg.jpg'}
+              alt="Детейлинг студия"
+              className="w-full h-full object-cover object-center opacity-25 scale-105 transition-transform duration-1000"
+            />
+            {/* Градиенты затемнения, чтобы текст и акценты оставались кристально контрастными */}
+            <div className="absolute inset-0 bg-gradient-to-b from-[#090a0d]/60 via-[#090a0d]/80 to-[#090a0d]" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#090a0d]/80 via-transparent to-[#090a0d]/80" />
+          </div>
 
-          <div className="relative inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-zinc-900/90 border border-zinc-800 text-zinc-400 text-xs font-medium tracking-wide">
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+          {/* Диффузная мягкая подсветка детейлинг-бокса */}
+          <div className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-[650px] max-w-[100vw] h-[280px] bg-gradient-to-b from-sky-500/15 via-sky-600/5 to-transparent blur-[120px] rounded-full z-[1]" />
+
+          <div className="relative z-10 inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-zinc-900/90 border border-zinc-800 text-zinc-300 text-xs font-medium tracking-wide backdrop-blur-md shadow-sm">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
             <span>Детейлинг и химчистка в {settings.city}</span>
           </div>
 
-          <h1 className="relative text-3xl sm:text-5xl lg:text-6xl font-semibold tracking-[-0.03em] text-white leading-[1.12] text-balance">
+          <h1 className="relative z-10 text-3xl sm:text-5xl lg:text-6xl font-semibold tracking-[-0.03em] text-white leading-[1.12] text-balance drop-shadow-sm">
             Бережный уход за авто за 1 день
           </h1>
 
-          <p className="relative text-sm sm:text-base text-zinc-400 max-w-xl mx-auto leading-relaxed text-pretty">
+          <p className="relative z-10 text-sm sm:text-base text-zinc-300 max-w-xl mx-auto leading-relaxed text-pretty">
             Глубокая экстракторная химчистка, сушка турбо-пушкой и зеркальная полировка. В студии на {settings.address.split(',')[0]} или с выездом к вашему дому.
           </p>
         </section>
