@@ -1,21 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminSession } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
+import { requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import {
+  MASTER_VISIBLE_STATUSES,
+  masterOrderWhere,
+  serializeOrderForAdmin,
+  serializeOrderForMaster,
+} from '@/lib/permissions';
 
 export async function GET(req: NextRequest) {
-  const isAuth = await verifyAdminSession();
-  if (!isAuth) {
-    return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
-  }
+  const auth = await requireRole('admin', 'master');
+  if (!auth.ok) return auth.response;
+  const { user } = auth;
 
   try {
     const search = req.nextUrl.searchParams.get('search') || '';
     const status = req.nextUrl.searchParams.get('status') || '';
 
-    const where: any = {};
+    let where: Prisma.OrderWhereInput;
 
-    if (status && status !== 'all') {
-      where.status = status;
+    if (user.role === 'master') {
+      if (status && status !== 'all' && !MASTER_VISIBLE_STATUSES.includes(status)) {
+        return NextResponse.json([]);
+      }
+      where = {
+        ...masterOrderWhere(user.id),
+        ...(status && status !== 'all' ? { status } : {}),
+      };
+    } else {
+      where = status && status !== 'all' ? { status } : {};
     }
 
     const orders = await prisma.order.findMany({
@@ -26,21 +40,26 @@ export async function GET(req: NextRequest) {
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: 200,
     });
 
-    const parsedOrders = orders.map((o) => ({
-      ...o,
-      items: JSON.parse(o.itemsJson || '[]'),
-      photos: JSON.parse(o.photosJson || '[]'),
-      tariffsSnapshot: JSON.parse(o.tariffsSnapshotJson || '{}'),
-      damages: JSON.parse(o.damagesJson || '[]'),
-      inspectionPhotosBefore: JSON.parse(o.inspectionPhotosBeforeJson || '[]'),
-      inspectionPhotosAfter: JSON.parse(o.inspectionPhotosAfterJson || '[]'),
-    }));
+    const serialized =
+      user.role === 'admin'
+        ? orders.map((o) => ({
+            ...serializeOrderForAdmin(o),
+            tariffsSnapshot: (() => {
+              try {
+                return JSON.parse(o.tariffsSnapshotJson || '{}');
+              } catch {
+                return {};
+              }
+            })(),
+          }))
+        : orders.map((o) => serializeOrderForMaster(o, user.id));
 
     // Регистронезависимый поиск в JS (SQLite LIKE чувствителен к регистру кириллицы)
     const filteredOrders = search
-      ? parsedOrders.filter((o) => {
+      ? serialized.filter((o) => {
           const s = search.trim().toLowerCase();
           return (
             (o.clientName && o.clientName.toLowerCase().includes(s)) ||
@@ -50,10 +69,10 @@ export async function GET(req: NextRequest) {
             (o.id && o.id.toLowerCase().includes(s))
           );
         })
-      : parsedOrders;
+      : serialized;
 
     return NextResponse.json(filteredOrders);
-  } catch (err: any) {
+  } catch (err) {
     console.error('Error fetching admin orders:', err);
     return NextResponse.json({ error: 'Ошибка получения заказов' }, { status: 500 });
   }

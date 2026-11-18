@@ -100,10 +100,17 @@ model Order {
   cancelledBy         String?   // client | admin | system_no_show
   cancelReason        String?   // Причина отмены или заметка к отмене
 
+  // Назначение мастера и выполнение
+  assignedMasterId    String?
+  assignedMaster      StaffUser? @relation(fields: [assignedMasterId], references: [id], onDelete: SetNull)
+  assignedMasterName  String?    // снимок имени (журнал и список не зависят от переименования)
+  workStartedAt       DateTime?
+
   @@index([token])
   @@index([status])
   @@index([createdAt])
   @@index([carVin])
+  @@index([assignedMasterId])
 }
 
 // -----------------------------------------------------------
@@ -260,4 +267,58 @@ model AdminSession {
   expiresAt DateTime
 
   @@index([token])
+}
+
+// -----------------------------------------------------------
+// СОТРУДНИКИ (RBAC), СЕССИИ, RATE LIMIT И ЖУРНАЛ ДЕЙСТВИЙ
+// -----------------------------------------------------------
+
+model StaffUser {
+  id             String         @id @default(uuid())
+  login          String         @unique            // строчными буквами
+  name           String
+  phone          String?
+  role           String         @default("master") // admin | master
+  passwordHash   String                            // пароль админа / PIN мастера
+  credVersion    Int            @default(2)        // 1 = старый bcrypt без pepper, 2 = текущий
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  sessions       StaffSession[]
+  assignedOrders Order[]
+}
+
+model StaffSession {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique                      // SHA-256 от токена из cookie
+  staffId   String
+  staff     StaffUser @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+
+  @@index([staffId])
+  @@index([expiresAt])
+}
+
+model LoginAttempt {
+  id        String   @id @default(uuid())
+  key       String                                  // "login:<логин>" или "ip:<адрес>"
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
+}
+
+// Журнал действий. БЕЗ внешнего ключа на Order: записи переживают удаление заказа.
+model OrderAuditLog {
+  id        String   @id @default(uuid())
+  orderId   String
+  actorId   String?                                 // StaffUser.id; null для клиента и системы
+  actorName String                                  // снимок имени на момент события
+  actorRole String                                  // admin | master | client | system
+  action    String                                  // order.created, order.claimed, ...
+  message   String
+  metaJson  String   @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([orderId, createdAt])
 }

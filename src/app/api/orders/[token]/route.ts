@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getStudioSettings } from '@/lib/studio-service';
+import { CLIENT_ACTOR, logOrderEvent } from '@/lib/audit';
 
 function getScheduledEntryDate(order: {
   booking?: { startAt: Date } | null;
@@ -212,6 +213,14 @@ export async function POST(
           },
         });
       }
+
+      await logOrderEvent(tx, {
+        orderId: order.id,
+        actor: CLIENT_ACTOR,
+        action: 'order.cancelled_by_client',
+        message: 'Клиент отменил запись',
+        meta: { reason: cancelReason },
+      });
 
       return ord;
     });

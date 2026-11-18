@@ -1,9 +1,10 @@
 import React from 'react';
 import Link from 'next/link';
-import { verifyAdminSession } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 import { getStudioSettings } from '@/lib/studio-service';
 import { AdminNav } from './AdminNav';
 import { AdminAuthGuard } from './AdminAuthGuard';
+import { AdminSessionProvider } from './session-context';
 import { ArrowLeft } from 'lucide-react';
 
 export const revalidate = 0;
@@ -13,7 +14,8 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const isAuth = await verifyAdminSession();
+  const session = await getSession();
+  const isAuth = Boolean(session);
   const settings = await getStudioSettings().catch(() => ({
     shortName: 'DetailingHub',
     studioName: 'DetailingHub',
@@ -21,32 +23,37 @@ export default async function AdminLayout({
 
   const shortName = settings.shortName || settings.studioName || 'DetailingHub';
   const initials = shortName.slice(0, 2).toUpperCase();
+  const roleLabel = session?.role === 'master' ? 'Мастер' : 'Админ';
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[#08090c] text-zinc-100 selection:bg-sky-500 selection:text-white">
       {/* Мобильная панель навигации (md:hidden) — компактный бар со скроллом */}
       <header className="md:hidden sticky top-0 z-30 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-800/80 px-4 py-2.5 space-y-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-sky-600 to-sky-400 flex items-center justify-center font-black text-white text-[10px]">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-sky-600 to-sky-400 flex items-center justify-center font-black text-white text-[10px] shrink-0">
               {initials}
             </div>
-            <span className="font-semibold text-sm text-white">
+            <span className="font-semibold text-sm text-white truncate">
               {shortName}
             </span>
-            <span className="text-[10px] text-zinc-500 font-medium">Админ</span>
+            {session && (
+              <span className="text-[10px] text-zinc-400 font-medium px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 shrink-0">
+                {session.name} • {roleLabel}
+              </span>
+            )}
           </div>
 
           <Link
             href="/"
-            className="flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-white px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800"
+            className="flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-white px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 shrink-0"
           >
             <ArrowLeft className="w-3 h-3 text-zinc-500" />
             <span>На сайт</span>
           </Link>
         </div>
 
-        {isAuth && <AdminNav mobile={true} />}
+        {session && <AdminNav mobile={true} role={session.role} />}
       </header>
 
       {/* Боковая панель для десктопа (hidden md:flex) */}
@@ -58,19 +65,21 @@ export default async function AdminLayout({
               <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-sky-600 to-sky-400 flex items-center justify-center font-black text-white text-xs shadow-md shadow-sky-500/20">
                 {initials}
               </div>
-              <div>
-                <h2 className="font-semibold text-base text-white tracking-wide leading-none">
+              <div className="min-w-0">
+                <h2 className="font-semibold text-base text-white tracking-wide leading-none truncate">
                   {shortName}
                 </h2>
-                <span className="text-[10px] text-zinc-500 uppercase font-semibold tracking-wider block mt-1">
-                  Кабинет владельца
+                <span className="text-[10px] text-zinc-500 uppercase font-semibold tracking-wider block mt-1 truncate">
+                  {session
+                    ? `${session.name} (${session.role === 'master' ? 'Мастер' : 'Владелец'})`
+                    : 'Кабинет студии'}
                 </span>
               </div>
             </div>
           </div>
 
           {/* Меню навигации */}
-          {isAuth && <AdminNav />}
+          {session && <AdminNav role={session.role} />}
         </div>
 
         {/* Нижняя часть сайдбара */}
@@ -93,9 +102,11 @@ export default async function AdminLayout({
       {/* Основной контент */}
       <main className="flex-1 min-w-0 p-4 sm:p-8 overflow-y-auto bg-gradient-to-b from-zinc-950/40 via-transparent to-transparent">
         <div className="max-w-6xl mx-auto">
-          <AdminAuthGuard isAuth={isAuth}>
-            {children}
-          </AdminAuthGuard>
+          <AdminSessionProvider value={session}>
+            <AdminAuthGuard isAuth={isAuth}>
+              {children}
+            </AdminAuthGuard>
+          </AdminSessionProvider>
         </div>
       </main>
     </div>

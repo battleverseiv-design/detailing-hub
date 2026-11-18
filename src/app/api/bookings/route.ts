@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createBookingWithTransaction } from '@/lib/booking-engine';
 import { prisma } from '@/lib/db';
-import { verifyAdminSession } from '@/lib/auth';
+import { assertSameOrigin, requireRole } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
@@ -91,45 +91,55 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const isAuth = await verifyAdminSession();
-  if (!isAuth) {
-    return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
-  }
+  const auth = await requireRole('admin', 'master');
+  if (!auth.ok) return auth.response;
+  const { user } = auth;
 
   try {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId') || searchParams.get('slug') || 'demo';
     const status = searchParams.get('status');
 
-    const user = await prisma.user.findFirst({
+    const studioUser = await prisma.user.findFirst({
       where: { OR: [{ id: userId }, { slug: userId }] },
     });
 
-    if (!user) {
+    if (!studioUser) {
       return NextResponse.json({ error: 'Мастер не найден' }, { status: 404 });
     }
 
-    const bookings = await prisma.booking.findMany({
-      where: {
-        userId: user.id,
-        ...(status ? { status } : {}),
-      },
-      include: {
-        service: true,
-      },
-      orderBy: { startAt: 'asc' },
-    });
+    const [bookings, workbays] = await Promise.all([
+      prisma.booking.findMany({
+        where: {
+          userId: studioUser.id,
+          ...(status ? { status } : {}),
+        },
+        include: {
+          service: true,
+          workbay: true,
+        },
+        orderBy: { startAt: 'asc' },
+      }),
+      prisma.workbay.findMany({
+        where: { isActive: true },
+        orderBy: { order: 'asc' },
+        select: { id: true, name: true, type: true, isActive: true, order: true },
+      }),
+    ]);
 
     return NextResponse.json({
       success: true,
+      workbays,
       bookings: bookings.map((b) => ({
         id: b.id,
         serviceId: b.serviceId,
         serviceTitle: b.service.title,
-        price: b.service.price,
+        ...(user.role === 'admin' ? { price: b.service.price } : {}),
+        workbayId: b.workbayId,
+        workbayName: b.workbay?.name ?? null,
         clientName: b.clientName,
         clientPhone: b.clientPhone,
-        clientEmail: b.clientEmail,
+        ...(user.role === 'admin' ? { clientEmail: b.clientEmail } : {}),
         startAt: b.startAt.toISOString(),
         endAt: b.endAt.toISOString(),
         status: b.status,
@@ -137,17 +147,18 @@ export async function GET(req: NextRequest) {
         createdAt: b.createdAt.toISOString(),
       })),
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error listing bookings:', error);
-    return NextResponse.json({ error: error.message || 'Ошибка загрузки записей' }, { status: 500 });
+    return NextResponse.json({ error: 'Ошибка загрузки записей' }, { status: 500 });
   }
 }
 
 export async function PATCH(req: NextRequest) {
-  const isAuth = await verifyAdminSession();
-  if (!isAuth) {
-    return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
-  }
+  const csrf = assertSameOrigin(req);
+  if (csrf) return csrf;
+
+  const auth = await requireRole('admin');
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await req.json();
@@ -164,8 +175,8 @@ export async function PATCH(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true, booking: updated });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error updating booking status:', error);
-    return NextResponse.json({ error: error.message || 'Ошибка обновления записи' }, { status: 500 });
+    return NextResponse.json({ error: 'Ошибка обновления записи' }, { status: 500 });
   }
 }

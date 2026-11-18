@@ -39,8 +39,20 @@ import {
   List,
   Star,
   Sparkles,
-  Edit3
+  Edit3,
+  Wrench,
+  History
 } from 'lucide-react';
+import { useAdminSession } from '../session-context';
+import { OrderHistory } from './OrderHistory';
+
+interface StaffOption {
+  id: string;
+  name: string;
+  login: string;
+  role: 'admin' | 'master';
+  isActive: boolean;
+}
 
 interface DamageItem {
   id: string;
@@ -65,8 +77,8 @@ export interface WorkbayItem {
 
 interface AdminOrder {
   id: string;
-  token: string;
-  status: 'new' | 'agreed' | 'in_progress' | 'completed' | 'cancelled';
+  token?: string;
+  status: 'new' | 'agreed' | 'in_progress' | 'ready' | 'completed' | 'cancelled';
   createdAt: string;
   clientName: string;
   clientPhone: string;
@@ -78,16 +90,23 @@ interface AdminOrder {
   desiredDate?: string | null;
   desiredTime?: string | null;
   agreedEntryDateTime?: string | null;
-  knownSubtotal: number;
-  mobileFee: number;
-  preliminaryTotal: number;
+  knownSubtotal?: number;
+  mobileFee?: number;
+  preliminaryTotal?: number;
   agreedFinalPrice?: number | null;
-  hasPhotoAppraisal: boolean;
+  hasPhotoAppraisal?: boolean;
   clientComment?: string | null;
   privateStudioNote?: string | null;
   source?: string | null;
   items: any[];
   photos: any[];
+
+  // Назначение мастера
+  assignedMasterId?: string | null;
+  assignedMasterName?: string | null;
+  workStartedAt?: string | null;
+  bay?: string | null;
+  myPayoutRub?: number;
 
   // Workbay & Booking
   bookingId?: string | null;
@@ -172,6 +191,10 @@ function formatEntryDateTime(raw?: string | null): string {
 }
 
 export default function AdminOrdersPage() {
+  const session = useAdminSession();
+  const isAdmin = session?.role === 'admin';
+  const isMaster = session?.role === 'master';
+
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -179,10 +202,27 @@ export default function AdminOrdersPage() {
   const [selectedSource, setSelectedSource] = useState<string>('all');
   const [activeOrder, setActiveOrder] = useState<AdminOrder | null>(null);
 
+  // Список активных мастеров (загружается только для админа)
+  const [masters, setMasters] = useState<StaffOption[]>([]);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
+
   // Режим просмотра: список или сетка боксов
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [gridDate, setGridDate] = useState<string>(() => getLocalDateString());
   const [workbays, setWorkbays] = useState<WorkbayItem[]>([]);
+  const [gridBookings, setGridBookings] = useState<Array<{
+    id: string;
+    workbayId?: string | null;
+    workbayName?: string | null;
+    clientName: string;
+    clientPhone: string;
+    serviceTitle: string;
+    startAt: string;
+    endAt: string;
+    status: string;
+    notes?: string | null;
+  }>>([]);
 
   // Быстрое создание записи (+ Новая запись)
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
@@ -201,7 +241,7 @@ export default function AdminOrdersPage() {
   const [newOrderError, setNewOrderError] = useState('');
 
   // Редактирование в модальном окне
-  const [modalTab, setModalTab] = useState<'main' | 'photos'>('main');
+  const [modalTab, setModalTab] = useState<'main' | 'photos' | 'history'>('main');
   const [editStatus, setEditStatus] = useState<string>('new');
   const [editCancelReason, setEditCancelReason] = useState<string>('');
   const [editPrice, setEditPrice] = useState<string>('');
@@ -218,6 +258,7 @@ export default function AdminOrdersPage() {
   const [savingOrder, setSavingOrder] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [modalError, setModalError] = useState('');
+  const [pageBannerError, setPageBannerError] = useState('');
 
   const fileInputBeforeRef = useRef<HTMLInputElement>(null);
   const fileInputAfterRef = useRef<HTMLInputElement>(null);
@@ -230,28 +271,43 @@ export default function AdminOrdersPage() {
   });
 
   useEffect(() => {
+    if (!isAdmin) return;
     fetch('/api/admin/studio')
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && !data.error) setSettings(data);
       })
       .catch(() => {});
-  }, []);
 
-  // Загрузка боксов студии
-  useEffect(() => {
-    fetch('/api/admin/booking/settings?userId=demo')
-      .then((r) => r.json())
+    fetch('/api/admin/staff', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data.workbays) {
-          setWorkbays(data.workbays.filter((b: any) => b.isActive));
+        if (data?.staff) {
+          setMasters(data.staff.filter((s: StaffOption) => s.role === 'master' && s.isActive));
         }
       })
-      .catch((e) => console.warn('Could not load workbays:', e));
-  }, []);
+      .catch(() => {});
+  }, [isAdmin]);
 
-  // Проверка URL параметров (например, при переходе из Графика: ?newOrder=1&date=...&workbayId=...)
+  // Загрузка боксов студии (работает и для админа, и для мастера через /api/bookings)
   useEffect(() => {
+    if (!session) return;
+    fetch('/api/bookings?userId=demo', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.workbays) {
+          setWorkbays(data.workbays.filter((b: any) => b.isActive));
+        }
+        if (Array.isArray(data?.bookings)) {
+          setGridBookings(data.bookings);
+        }
+      })
+      .catch((e) => console.warn('Could not load bookings/workbays:', e));
+  }, [session, orders.length]);
+
+  // Проверка URL параметров (только для админа: ?newOrder=1&date=...&workbayId=...)
+  useEffect(() => {
+    if (!isAdmin) return;
     if (typeof window !== 'undefined') {
       const sp = new URLSearchParams(window.location.search);
       if (sp.get('newOrder') === '1') {
@@ -261,7 +317,7 @@ export default function AdminOrdersPage() {
         handleOpenNewOrderModal(pBayId || undefined, undefined, pDate || undefined);
       }
     }
-  }, [workbays]);
+  }, [workbays, isAdmin]);
 
   // Загрузка заказов
   const fetchOrders = async () => {
@@ -271,7 +327,11 @@ export default function AdminOrdersPage() {
       if (search) q.set('search', search);
       if (selectedStatus && selectedStatus !== 'all') q.set('status', selectedStatus);
 
-      const res = await fetch(`/api/admin/orders?${q.toString()}`);
+      const res = await fetch(`/api/admin/orders?${q.toString()}`, { cache: 'no-store' });
+      if (res.status === 401) {
+        window.location.href = '/admin/login';
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setOrders(data);
@@ -422,12 +482,107 @@ export default function AdminOrdersPage() {
   const stats = useMemo(() => {
     const totalCount = orders.length;
     const pendingCount = orders.filter((o) => o.status === 'new').length;
-    const agreedCount = orders.filter((o) => o.status === 'agreed' || o.status === 'in_progress').length;
+    const agreedCount = orders.filter((o) => o.status === 'agreed' || o.status === 'in_progress' || o.status === 'ready').length;
     const completedOrders = orders.filter((o) => o.status === 'completed');
-    const revenue = completedOrders.reduce((sum, o) => sum + (o.agreedFinalPrice || o.preliminaryTotal), 0);
+    const revenue = completedOrders.reduce(
+      (sum, o) => sum + (o.agreedFinalPrice ?? o.preliminaryTotal ?? 0),
+      0
+    );
 
     return { totalCount, pendingCount, agreedCount, revenue };
   }, [orders]);
+
+  // Помощник POST-запросов для ролевых действий (claim / status / assign)
+  const postRoleAction = async (path: string, body?: unknown) => {
+    const r = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (r.status === 401) {
+      window.location.href = '/admin/login';
+      return null;
+    }
+    if (!r.ok) {
+      throw new Error(data.error || 'Ошибка выполнения действия');
+    }
+    return data;
+  };
+
+  // Мастер: «Взять заказ в работу»
+  const handleClaimOrder = async (orderId: string) => {
+    setActionBusy(true);
+    setModalError('');
+    setPageBannerError('');
+    try {
+      const data = await postRoleAction(`/api/admin/orders/${orderId}/claim`);
+      if (!data) return;
+      await fetchOrders();
+      if (activeOrder?.id === orderId && data.order) {
+        setActiveOrder(data.order);
+        setEditStatus(data.order.status);
+        setHistoryKey((k) => k + 1);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Не удалось взять заказ';
+      setModalError(msg);
+      setPageBannerError(msg);
+      await fetchOrders();
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  // Мастер: переключение статуса in_progress <-> ready
+  const handleMasterStatus = async (orderId: string, nextStatus: 'in_progress' | 'ready') => {
+    setActionBusy(true);
+    setModalError('');
+    setPageBannerError('');
+    try {
+      const data = await postRoleAction(`/api/admin/orders/${orderId}/status`, { status: nextStatus });
+      if (!data) return;
+      await fetchOrders();
+      if (activeOrder?.id === orderId) {
+        setActiveOrder((prev) => (prev ? { ...prev, status: nextStatus } : null));
+        setEditStatus(nextStatus);
+        setHistoryKey((k) => k + 1);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Не удалось сменить статус';
+      setModalError(msg);
+      setPageBannerError(msg);
+      await fetchOrders();
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  // Админ: назначить / снять мастера
+  const handleAssignMaster = async (orderId: string, masterId: string | null) => {
+    setActionBusy(true);
+    setModalError('');
+    try {
+      const data = await postRoleAction(`/api/admin/orders/${orderId}/assign`, { masterId });
+      if (!data) return;
+      const chosen = masterId ? masters.find((m) => m.id === masterId) || null : null;
+      setActiveOrder((prev) =>
+        prev && prev.id === orderId
+          ? {
+              ...prev,
+              assignedMasterId: chosen?.id ?? null,
+              assignedMasterName: chosen?.name ?? null,
+            }
+          : prev
+      );
+      setHistoryKey((k) => k + 1);
+      await fetchOrders();
+    } catch (err) {
+      setModalError(err instanceof Error ? err.message : 'Не удалось назначить мастера');
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
   // Быстрое изменение статуса прямо из карточки
   const handleQuickStatusChange = async (orderId: string, newStatus: 'new' | 'agreed' | 'in_progress' | 'completed' | 'cancelled') => {
@@ -478,7 +633,7 @@ export default function AdminOrdersPage() {
   const handleOpenOrder = (order: AdminOrder) => {
     setActiveOrder(order);
 
-    const defaultPrice = order.agreedFinalPrice != null ? order.agreedFinalPrice : order.preliminaryTotal;
+    const defaultPrice = order.agreedFinalPrice != null ? order.agreedFinalPrice : (order.preliminaryTotal ?? 0);
     setEditPrice(String(defaultPrice));
 
     // Парсим дату и время из agreedEntryDateTime или desiredDate
@@ -558,6 +713,28 @@ export default function AdminOrdersPage() {
         url: `/api/photos/${uploaded.id}`,
         description: target === 'before' ? 'Фото до работ' : 'Фото после работ',
       };
+
+      // Мастер (и админ при быстрой привязке) сразу фиксируют фото через /inspection с записью в журнал
+      if (isMaster && activeOrder) {
+        const bindRes = await fetch(`/api/admin/orders/${activeOrder.id}/inspection`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            kind: target,
+            photos: [{ id: uploaded.id }],
+          }),
+        });
+        if (bindRes.status === 401) {
+          window.location.href = '/admin/login';
+          return;
+        }
+        if (!bindRes.ok) {
+          const bindData = await bindRes.json().catch(() => ({}));
+          throw new Error(bindData.error || 'Не удалось привязать фото к заказу');
+        }
+        setHistoryKey((k) => k + 1);
+        fetchOrders();
+      }
 
       if (target === 'before') {
         setPhotosBefore((prev) => [...prev, photoItem]);
@@ -647,36 +824,54 @@ export default function AdminOrdersPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => handleOpenNewOrderModal()}
-            className="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs shadow-md shadow-sky-600/20 active:scale-95 transition-all flex items-center gap-2 self-start sm:self-auto shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Новая запись</span>
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => handleOpenNewOrderModal()}
+              className="min-h-[44px] px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs shadow-md shadow-sky-600/20 active:scale-95 transition-all flex items-center gap-2 self-start sm:self-auto shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Новая запись</span>
+            </button>
+          )}
         </div>
 
-        {/* Метрики: Всего, Ожидают, В работе, Прибыль */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {pageBannerError && (
+          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{pageBannerError}</span>
+            </div>
+            <button type="button" onClick={() => setPageBannerError('')} className="text-rose-300 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Метрики: для админа 4 карточки с прибылью, для мастера 2 рабочие */}
+        <div className={`grid gap-3 ${isAdmin ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2'}`}>
           <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800">
-            <span className="text-[11px] font-medium text-zinc-400 block mb-1">Всего</span>
+            <span className="text-[11px] font-medium text-zinc-400 block mb-1">
+              {isMaster ? 'Доступно мне' : 'Всего'}
+            </span>
             <span className="text-2xl font-extrabold text-white tracking-tight font-mono">
               {stats.totalCount}
             </span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-medium text-amber-400 block mb-1">Ожидают</span>
-              {stats.pendingCount > 0 && (
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-              )}
+          {isAdmin && (
+            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-amber-400 block mb-1">Ожидают</span>
+                {stats.pendingCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                )}
+              </div>
+              <span className="text-2xl font-extrabold text-amber-300 tracking-tight font-mono">
+                {stats.pendingCount}
+              </span>
             </div>
-            <span className="text-2xl font-extrabold text-amber-300 tracking-tight font-mono">
-              {stats.pendingCount}
-            </span>
-          </div>
+          )}
 
           <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800">
             <span className="text-[11px] font-medium text-sky-400 block mb-1">В работе</span>
@@ -685,12 +880,14 @@ export default function AdminOrdersPage() {
             </span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800">
-            <span className="text-[11px] font-medium text-emerald-400 block mb-1">Прибыль</span>
-            <span className="text-2xl font-extrabold text-emerald-300 tracking-tight font-mono">
-              {stats.revenue.toLocaleString('ru-RU')} ₽
-            </span>
-          </div>
+          {isAdmin && (
+            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800">
+              <span className="text-[11px] font-medium text-emerald-400 block mb-1">Прибыль</span>
+              <span className="text-2xl font-extrabold text-emerald-300 tracking-tight font-mono">
+                {stats.revenue.toLocaleString('ru-RU')} ₽
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -738,20 +935,29 @@ export default function AdminOrdersPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 pt-2 border-t border-zinc-900">
           {/* Быстрые статусы */}
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            {[
-              { id: 'all', label: 'Все' },
-              { id: 'new', label: 'Ожидают', badge: stats.pendingCount },
-              { id: 'agreed', label: 'Согласованы' },
-              { id: 'in_progress', label: 'В боксе' },
-              { id: 'completed', label: 'Выполнены' },
-              { id: 'cancelled', label: 'Отменены' },
-            ].map((tab) => {
+            {(isMaster
+              ? [
+                  { id: 'all', label: 'Все' },
+                  { id: 'agreed', label: 'Подтверждены' },
+                  { id: 'in_progress', label: 'В боксе' },
+                  { id: 'ready', label: 'Готовы к выдаче' },
+                ]
+              : [
+                  { id: 'all', label: 'Все' },
+                  { id: 'new', label: 'Ожидают', badge: stats.pendingCount },
+                  { id: 'agreed', label: 'Подтверждены' },
+                  { id: 'in_progress', label: 'В боксе' },
+                  { id: 'ready', label: 'Готовы' },
+                  { id: 'completed', label: 'Выполнены' },
+                  { id: 'cancelled', label: 'Отменены' },
+                ]
+            ).map((tab: { id: string; label: string; badge?: number }) => {
               const isActive = selectedStatus === tab.id;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setSelectedStatus(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+                  className={`min-h-[38px] px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
                     isActive
                       ? 'bg-white text-zinc-950 font-bold shadow-sm'
                       : 'text-zinc-400 hover:text-white bg-zinc-900/60 border border-zinc-800/80'
@@ -772,32 +978,34 @@ export default function AdminOrdersPage() {
             })}
           </div>
 
-          {/* Фильтр по источнику (С сайта / Сотрудник / Владелец) */}
-          <div className="flex flex-wrap items-center gap-1 text-xs">
-            <span className="text-[10px] uppercase font-bold text-zinc-500 mr-1">Источник:</span>
-            {[
-              { id: 'all', label: 'Все' },
-              { id: 'site', label: 'С сайта' },
-              { id: 'phone_admin', label: 'Сотрудник / Звонок' },
-              { id: 'owner_personal', label: 'Владелец' },
-            ].map((srcTab) => {
-              const isAct = selectedSource === srcTab.id;
-              return (
-                <button
-                  key={srcTab.id}
-                  type="button"
-                  onClick={() => setSelectedSource(srcTab.id)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
-                    isAct
-                      ? 'bg-zinc-800 text-sky-400 font-bold border border-sky-500/30'
-                      : 'text-zinc-500 hover:text-zinc-300 bg-zinc-900/40'
-                  }`}
-                >
-                  {srcTab.label}
-                </button>
-              );
-            })}
-          </div>
+          {/* Фильтр по источнику — только для админа */}
+          {isAdmin && (
+            <div className="flex flex-wrap items-center gap-1 text-xs">
+              <span className="text-[10px] uppercase font-bold text-zinc-500 mr-1">Источник:</span>
+              {[
+                { id: 'all', label: 'Все' },
+                { id: 'site', label: 'С сайта' },
+                { id: 'phone_admin', label: 'Сотрудник / Звонок' },
+                { id: 'owner_personal', label: 'Владелец' },
+              ].map((srcTab) => {
+                const isAct = selectedSource === srcTab.id;
+                return (
+                  <button
+                    key={srcTab.id}
+                    type="button"
+                    onClick={() => setSelectedSource(srcTab.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                      isAct
+                        ? 'bg-zinc-800 text-sky-400 font-bold border border-sky-500/30'
+                        : 'text-zinc-500 hover:text-zinc-300 bg-zinc-900/40'
+                    }`}
+                  >
+                    {srcTab.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -868,10 +1076,23 @@ export default function AdminOrdersPage() {
                 ) : (
                   workbays.map((bay) => {
                     const bayOrders = orders.filter((o) => {
-                      const isThisBay = o.booking?.workbayId === bay.id || o.booking?.workbay?.id === bay.id;
-                      const isThisDate = o.desiredDate === gridDate || (o.booking?.startAt && o.booking.startAt.startsWith(gridDate));
+                      const isThisBay =
+                        o.booking?.workbayId === bay.id ||
+                        o.booking?.workbay?.id === bay.id ||
+                        (o.bay && o.bay === bay.name);
+                      const isThisDate =
+                        o.desiredDate === gridDate ||
+                        (o.booking?.startAt && o.booking.startAt.startsWith(gridDate)) ||
+                        (o.agreedEntryDateTime && o.agreedEntryDateTime.startsWith(gridDate));
                       return isThisBay && isThisDate;
                     });
+
+                    const bayFallbackBookings = gridBookings.filter(
+                      (b) =>
+                        b.status !== 'cancelled' &&
+                        (b.workbayId === bay.id || b.workbayName === bay.name) &&
+                        b.startAt.startsWith(gridDate)
+                    );
 
                     return (
                       <tr key={bay.id} className="hover:bg-zinc-900/20">
@@ -926,10 +1147,14 @@ export default function AdminOrdersPage() {
                               let indicatorColor = 'bg-amber-400';
                               let statusLabel = 'Новый';
 
-                              if (orderInSlot.status === 'completed' || orderInSlot.isPaid) {
+                              if (orderInSlot.status === 'completed' || (isAdmin && orderInSlot.isPaid)) {
                                 statusColor = 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300';
                                 indicatorColor = 'bg-emerald-400';
-                                statusLabel = orderInSlot.isPaid ? 'Оплачен' : 'Готов';
+                                statusLabel = isAdmin && orderInSlot.isPaid ? 'Оплачен' : 'Выполнен';
+                              } else if (orderInSlot.status === 'ready') {
+                                statusColor = 'bg-teal-500/15 border-teal-500/40 text-teal-300';
+                                indicatorColor = 'bg-teal-400';
+                                statusLabel = 'Готов';
                               } else if (orderInSlot.status === 'in_progress') {
                                 statusColor = 'bg-purple-500/15 border-purple-500/40 text-purple-300';
                                 indicatorColor = 'bg-purple-400';
@@ -974,7 +1199,9 @@ export default function AdminOrdersPage() {
                                           </span>
                                         )}
                                         <span className="text-[10px] text-zinc-300 truncate">
-                                          {orderInSlot.clientName}
+                                          {orderInSlot.assignedMasterName
+                                            ? `🔧 ${orderInSlot.assignedMasterName}`
+                                            : orderInSlot.clientName}
                                         </span>
                                       </div>
                                     </div>
@@ -983,26 +1210,61 @@ export default function AdminOrdersPage() {
                                       <span className="text-zinc-400 font-normal">
                                         {colSpan > 1 ? `${colSpan} ч.` : '1 ч.'}
                                       </span>
-                                      <span className="font-extrabold">
-                                        {(orderInSlot.agreedFinalPrice != null ? orderInSlot.agreedFinalPrice : orderInSlot.preliminaryTotal).toLocaleString('ru-RU')} ₽
-                                      </span>
+                                      {isAdmin && (
+                                        <span className="font-extrabold">
+                                          {(orderInSlot.agreedFinalPrice ?? orderInSlot.preliminaryTotal ?? 0).toLocaleString('ru-RU')} ₽
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                 </td>
                               );
                             } else {
-                              cells.push(
-                                <td key={hour} className="p-1.5 border-l border-zinc-900 align-top h-20 w-24">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenNewOrderModal(bay.id, hour)}
-                                    className="w-full h-full min-h-[56px] rounded-xl border border-dashed border-zinc-900 hover:border-sky-500/40 hover:bg-sky-500/5 transition-all flex items-center justify-center text-zinc-700 hover:text-sky-400 group"
-                                    title={`Записать клиента в ${bay.name} на ${hour}`}
-                                  >
-                                    <Plus className="w-3.5 h-3.5 group-hover:scale-125 transition-transform" />
-                                  </button>
-                                </td>
+                              const fallbackBooking = bayFallbackBookings.find(
+                                (b) => new Date(b.startAt).getHours() === hourNum
                               );
+                              if (fallbackBooking) {
+                                const diffMs =
+                                  new Date(fallbackBooking.endAt).getTime() -
+                                  new Date(fallbackBooking.startAt).getTime();
+                                const durationHours = Math.max(1, Math.round(diffMs / (1000 * 60 * 60)));
+                                const colSpan = Math.min(durationHours, GRID_HOURS.length - hourIdx);
+                                skipUntilIndex = hourIdx + colSpan;
+                                cells.push(
+                                  <td
+                                    key={hour}
+                                    colSpan={colSpan}
+                                    className="p-1.5 border-l border-zinc-900 align-top h-20"
+                                    style={{ minWidth: `${colSpan * 96}px` }}
+                                  >
+                                    <div className="h-full p-2 rounded-xl border bg-zinc-900/70 border-zinc-700/60 text-zinc-300 flex flex-col justify-between">
+                                      <span className="text-[11px] font-bold text-white truncate">
+                                        {fallbackBooking.serviceTitle}
+                                      </span>
+                                      <span className="text-[10px] text-zinc-400 truncate">
+                                        {fallbackBooking.clientName}
+                                      </span>
+                                    </div>
+                                  </td>
+                                );
+                              } else {
+                                cells.push(
+                                  <td key={hour} className="p-1.5 border-l border-zinc-900 align-top h-20 w-24">
+                                    {isAdmin ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenNewOrderModal(bay.id, hour)}
+                                        className="w-full h-full min-h-[56px] rounded-xl border border-dashed border-zinc-900 hover:border-sky-500/40 hover:bg-sky-500/5 transition-all flex items-center justify-center text-zinc-700 hover:text-sky-400 group"
+                                        title={`Записать клиента в ${bay.name} на ${hour}`}
+                                      >
+                                        <Plus className="w-3.5 h-3.5 group-hover:scale-125 transition-transform" />
+                                      </button>
+                                    ) : (
+                                      <div className="w-full h-full min-h-[56px] rounded-xl border border-dashed border-zinc-900/60" />
+                                    )}
+                                  </td>
+                                );
+                              }
                             }
                           });
 
@@ -1036,6 +1298,7 @@ export default function AdminOrdersPage() {
               new: 'bg-amber-500/15 text-amber-300 border-amber-500/35',
               agreed: 'bg-sky-500/15 text-sky-300 border-sky-500/35',
               in_progress: 'bg-purple-500/15 text-purple-300 border-purple-500/35',
+              ready: 'bg-teal-500/15 text-teal-300 border-teal-500/35',
               completed: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35',
               cancelled: 'bg-rose-500/15 text-rose-300 border-rose-500/35',
             };
@@ -1044,9 +1307,16 @@ export default function AdminOrdersPage() {
               new: 'Новый',
               agreed: 'Подтверждён',
               in_progress: 'В боксе',
-              completed: 'Готов к выдаче',
+              ready: 'Готов к выдаче',
+              completed: 'Выполнен',
               cancelled: 'Отменён',
             };
+
+            const canClaim =
+              isMaster &&
+              order.status === 'agreed' &&
+              (!order.assignedMasterId || order.assignedMasterId === session?.id);
+            const isMyOrder = Boolean(session?.id && order.assignedMasterId === session.id);
 
             const cleanPhone = (order.clientPhone || '').replace(/\D/g, '');
             const clientMsg = `Здравствуйте, ${order.clientName}! Вас беспокоит студия детейлинга ${settings.shortName || 'DetailingHub'}. По поводу вашей записи #${order.id.slice(-6).toUpperCase()} (${order.carBrandModel}): `;
@@ -1063,12 +1333,26 @@ export default function AdminOrdersPage() {
                 key={order.id}
                 className="p-4 sm:p-5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-zinc-700/80 transition-all space-y-3.5"
               >
-                {/* Мета-строка (Уровень 3): Номер, Источник, Дата заявки */}
+                {/* Мета-строка (Уровень 3): Номер, Источник, Мастер, Дата заявки */}
                 <div className="flex items-center justify-between text-[11px] text-zinc-500 gap-2 flex-wrap">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono font-medium">#{order.id.slice(-6).toUpperCase()}</span>
-                    <span>•</span>
-                    {renderSourceBadge(order.source)}
+                    {isAdmin && (
+                      <>
+                        <span>•</span>
+                        {renderSourceBadge(order.source)}
+                      </>
+                    )}
+                    {order.assignedMasterName ? (
+                      <span className="px-2 py-0.5 rounded-lg bg-purple-500/15 border border-purple-500/30 text-[10px] font-bold text-purple-300 flex items-center gap-1">
+                        <Wrench className="w-3 h-3" />
+                        <span>{order.assignedMasterName}</span>
+                      </span>
+                    ) : order.status === 'agreed' ? (
+                      <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-700 text-[10px] font-semibold text-zinc-400">
+                        Мастер не назначен
+                      </span>
+                    ) : null}
                     {order.actCompletedAt && (
                       <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/25 text-[10px] font-semibold text-emerald-400 flex items-center gap-1">
                         <ShieldCheck className="w-3 h-3" />
@@ -1120,33 +1404,44 @@ export default function AdminOrdersPage() {
                       <span>
                         {order.serviceFormat === 'mobile'
                           ? (order.deliveryAddress || 'Выезд за пределы города')
-                          : (order.booking?.workbay?.name ? `В боксе «${order.booking.workbay.name}»` : 'В студии')}
+                          : (order.booking?.workbay?.name || order.bay)
+                          ? `В боксе «${order.booking?.workbay?.name || order.bay}»`
+                          : 'В студии'}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800/60">
-                    <span className="text-lg font-black text-white font-mono">
-                      {(order.agreedFinalPrice || order.preliminaryTotal).toLocaleString('ru-RU')} ₽
-                    </span>
-                    <span
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
-                        order.isPaid
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                          : 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                      }`}
-                    >
-                      {order.isPaid
-                        ? `✓ Оплачено (${
-                            order.paymentMethod === 'card'
-                              ? 'Карта'
-                              : order.paymentMethod === 'sbp'
-                              ? 'СБП'
-                              : 'Нал'
-                          })`
-                        : 'Не оплачен'}
-                    </span>
-                  </div>
+                  {isAdmin ? (
+                    <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800/60">
+                      <span className="text-lg font-black text-white font-mono">
+                        {(order.agreedFinalPrice ?? order.preliminaryTotal ?? 0).toLocaleString('ru-RU')} ₽
+                      </span>
+                      <span
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                          order.isPaid
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                        }`}
+                      >
+                        {order.isPaid
+                          ? `✓ Оплачено (${
+                              order.paymentMethod === 'card'
+                                ? 'Карта'
+                                : order.paymentMethod === 'sbp'
+                                ? 'СБП'
+                                : 'Нал'
+                            })`
+                          : 'Не оплачен'}
+                      </span>
+                    </div>
+                  ) : order.myPayoutRub !== undefined ? (
+                    <div className="flex items-center justify-end gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800/60">
+                      <span className="text-[11px] text-zinc-400">Моя выплата:</span>
+                      <span className="text-base font-black text-emerald-300 font-mono">
+                        {order.myPayoutRub.toLocaleString('ru-RU')} ₽
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* Блок клиента и услуг */}
@@ -1175,10 +1470,17 @@ export default function AdminOrdersPage() {
                     {order.items?.map((i) => i.name).join(', ') || 'Комплекс услуг'}
                   </div>
 
-                  {order.privateStudioNote && (
+                  {isAdmin && order.privateStudioNote && (
                     <div className="p-2 rounded-xl bg-zinc-900 border border-amber-500/25 text-xs text-amber-300/90 leading-relaxed">
-                      <span className="text-amber-400 font-bold mr-1">Заметка мастера:</span>
+                      <span className="text-amber-400 font-bold mr-1">Заметка студии:</span>
                       <span>{order.privateStudioNote}</span>
+                    </div>
+                  )}
+
+                  {order.clientComment && (
+                    <div className="p-2 rounded-xl bg-zinc-900/70 border border-zinc-800 text-xs text-zinc-300 leading-relaxed">
+                      <span className="text-zinc-400 font-bold mr-1">Комментарий клиента:</span>
+                      <span>{order.clientComment}</span>
                     </div>
                   )}
 
@@ -1237,6 +1539,30 @@ export default function AdminOrdersPage() {
                     <span>Telegram</span>
                   </a>
 
+                  {canClaim && (
+                    <button
+                      type="button"
+                      disabled={actionBusy}
+                      onClick={() => handleClaimOrder(order.id)}
+                      className="col-span-2 sm:col-span-1 min-h-[44px] px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-md active:scale-95 disabled:opacity-50 transition-all"
+                    >
+                      <Wrench className="w-3.5 h-3.5" />
+                      <span>Взять в работу</span>
+                    </button>
+                  )}
+
+                  {isMaster && isMyOrder && order.status === 'in_progress' && (
+                    <button
+                      type="button"
+                      disabled={actionBusy}
+                      onClick={() => handleMasterStatus(order.id, 'ready')}
+                      className="col-span-2 sm:col-span-1 min-h-[44px] px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-md active:scale-95 disabled:opacity-50 transition-all"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Готов к выдаче</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => handleOpenOrder(order)}
@@ -1271,17 +1597,19 @@ export default function AdminOrdersPage() {
                 </span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <a
-                  href={`/order/${activeOrder.token}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="min-h-[40px] px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                  title="Открыть официальный бланк заказ-наряда А4"
-                >
-                  <FileText className="w-3.5 h-3.5 text-zinc-400" />
-                  <span className="hidden sm:inline">Печать А4</span>
-                  <ExternalLink className="w-3 h-3 text-zinc-500" />
-                </a>
+                {isAdmin && activeOrder.token && (
+                  <a
+                    href={`/order/${activeOrder.token}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-h-[40px] px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                    title="Открыть официальный бланк заказ-наряда А4"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-zinc-400" />
+                    <span className="hidden sm:inline">Печать А4</span>
+                    <ExternalLink className="w-3 h-3 text-zinc-500" />
+                  </a>
+                )}
                 <button
                   type="button"
                   onClick={() => setActiveOrder(null)}
@@ -1294,78 +1622,190 @@ export default function AdminOrdersPage() {
 
             {/* Прокручиваемое тело модалки */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-              {/* 1. СТАТУС ЗАКАЗА — СЕГМЕНТИРОВАННЫЙ ПЕРЕКЛЮЧАТЕЛЬ НАВЕРХУ */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
-                  Статус записи
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1 rounded-2xl bg-zinc-900 border border-zinc-800">
-                  <button
-                    type="button"
-                    onClick={() => handleStatusSelect('new')}
-                    className={`min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      editStatus === 'new'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-500/10'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                    }`}
-                  >
-                    <span className={`w-2 h-2 rounded-full ${editStatus === 'new' ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
-                    <span>Новый</span>
-                  </button>
+              {/* 1. СТАТУС ЗАКАЗА И ИСПОЛНИТЕЛЬ */}
+              {isAdmin ? (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
+                      Статус записи
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 p-1 rounded-2xl bg-zinc-900 border border-zinc-800">
+                      <button
+                        type="button"
+                        onClick={() => handleStatusSelect('new')}
+                        className={`min-h-[40px] py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                          editStatus === 'new'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-500/10'
+                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${editStatus === 'new' ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
+                        <span>Новый</span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleStatusSelect('agreed')}
-                    className={`min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      editStatus === 'agreed'
-                        ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm shadow-sky-500/10'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                    }`}
-                  >
-                    <span className={`w-2 h-2 rounded-full ${editStatus === 'agreed' ? 'bg-sky-400' : 'bg-zinc-600'}`} />
-                    <span>Подтверждён</span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStatusSelect('agreed')}
+                        className={`min-h-[40px] py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                          editStatus === 'agreed'
+                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm shadow-sky-500/10'
+                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${editStatus === 'agreed' ? 'bg-sky-400' : 'bg-zinc-600'}`} />
+                        <span>Подтверждён</span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleStatusSelect('in_progress')}
-                    className={`min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      editStatus === 'in_progress'
-                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm shadow-purple-500/10'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                    }`}
-                  >
-                    <span className={`w-2 h-2 rounded-full ${editStatus === 'in_progress' ? 'bg-purple-400' : 'bg-zinc-600'}`} />
-                    <span>В боксе</span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStatusSelect('in_progress')}
+                        className={`min-h-[40px] py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                          editStatus === 'in_progress'
+                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm shadow-purple-500/10'
+                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${editStatus === 'in_progress' ? 'bg-purple-400' : 'bg-zinc-600'}`} />
+                        <span>В боксе</span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleStatusSelect('completed')}
-                    className={`min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      editStatus === 'completed'
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/10'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                    }`}
-                  >
-                    <span className={`w-2 h-2 rounded-full ${editStatus === 'completed' ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
-                    <span>Готов к выдаче</span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStatusSelect('ready')}
+                        className={`min-h-[40px] py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                          editStatus === 'ready'
+                            ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40 shadow-sm shadow-teal-500/10'
+                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${editStatus === 'ready' ? 'bg-teal-400' : 'bg-zinc-600'}`} />
+                        <span>Готов</span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleStatusSelect('cancelled')}
-                    className={`col-span-2 sm:col-span-1 min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      editStatus === 'cancelled'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-500/10'
-                        : 'text-zinc-400 hover:text-rose-400 hover:bg-zinc-800/60'
-                    }`}
-                  >
-                    <span className={`w-2 h-2 rounded-full ${editStatus === 'cancelled' ? 'bg-rose-400' : 'bg-zinc-600'}`} />
-                    <span>Отменён</span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStatusSelect('completed')}
+                        className={`min-h-[40px] py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                          editStatus === 'completed'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/10'
+                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${editStatus === 'completed' ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+                        <span>Выполнен</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleStatusSelect('cancelled')}
+                        className={`min-h-[40px] py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                          editStatus === 'cancelled'
+                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-500/10'
+                            : 'text-zinc-400 hover:text-rose-400 hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${editStatus === 'cancelled' ? 'bg-rose-400' : 'bg-zinc-600'}`} />
+                        <span>Отменён</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Блок «Исполнитель (мастер)» для админа */}
+                  <div className="p-3.5 rounded-2xl bg-zinc-900/70 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2 text-xs">
+                      <Wrench className="w-4 h-4 text-purple-400 shrink-0" />
+                      <div>
+                        <span className="font-bold text-white block">Исполнитель (мастер)</span>
+                        <span className="text-[11px] text-zinc-400">
+                          {activeOrder.assignedMasterName
+                            ? `Назначен: ${activeOrder.assignedMasterName}`
+                            : 'Свободен (любой активный мастер может взять в работу)'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <select
+                      disabled={
+                        actionBusy ||
+                        activeOrder.status === 'completed' ||
+                        activeOrder.status === 'cancelled'
+                      }
+                      value={activeOrder.assignedMasterId || ''}
+                      onChange={(e) => handleAssignMaster(activeOrder.id, e.target.value || null)}
+                      className="min-h-[44px] w-full sm:w-56 px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-base sm:text-sm text-white font-semibold focus:outline-none focus:border-sky-500 disabled:opacity-50"
+                    >
+                      <option value="">Не назначен</option>
+                      {masters.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({m.login})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Панель действий МАСТЕРА в модалке */
+                <div className="p-4 rounded-2xl bg-zinc-900/70 border border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 text-xs">
+                      <Wrench className="w-4 h-4 text-purple-400" />
+                      <span className="font-bold text-white">
+                        {activeOrder.assignedMasterName
+                          ? `Исполнитель: ${activeOrder.assignedMasterName}`
+                          : 'Заказ свободен'}
+                      </span>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-700 text-xs font-bold text-sky-300">
+                      {activeOrder.status === 'agreed'
+                        ? 'Подтверждён'
+                        : activeOrder.status === 'in_progress'
+                        ? 'В боксе'
+                        : activeOrder.status === 'ready'
+                        ? 'Готов к выдаче'
+                        : activeOrder.status}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2.5">
+                    {activeOrder.status === 'agreed' &&
+                      (!activeOrder.assignedMasterId || activeOrder.assignedMasterId === session?.id) && (
+                        <button
+                          type="button"
+                          disabled={actionBusy}
+                          onClick={() => handleClaimOrder(activeOrder.id)}
+                          className="min-h-[44px] flex-1 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs sm:text-sm shadow-md active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Wrench className="w-4 h-4" />
+                          <span>Взять заказ в работу</span>
+                        </button>
+                      )}
+
+                    {activeOrder.status === 'in_progress' && activeOrder.assignedMasterId === session?.id && (
+                      <button
+                        type="button"
+                        disabled={actionBusy}
+                        onClick={() => handleMasterStatus(activeOrder.id, 'ready')}
+                        className="min-h-[44px] flex-1 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-extrabold text-xs sm:text-sm shadow-md active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Готов к выдаче</span>
+                      </button>
+                    )}
+
+                    {activeOrder.status === 'ready' && activeOrder.assignedMasterId === session?.id && (
+                      <button
+                        type="button"
+                        disabled={actionBusy}
+                        onClick={() => handleMasterStatus(activeOrder.id, 'in_progress')}
+                        className="min-h-[44px] flex-1 px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs sm:text-sm border border-zinc-700 active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Wrench className="w-4 h-4" />
+                        <span>Вернуть в работу</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* БАННЕР ЕСЛИ СТАТУС ОТМЕНЁН */}
               {editStatus === 'cancelled' && (
@@ -1385,32 +1825,32 @@ export default function AdminOrdersPage() {
                 </div>
               )}
 
-              {/* 2. ВКЛАДКИ: «Основное и оплата» и «Фотоотчёт» (Mobile-First 44px) */}
-              <div className="grid grid-cols-2 gap-2 border-b border-zinc-800 pb-3">
+              {/* 2. ВКЛАДКИ: «Основное», «Фотоотчёт», «История» (Mobile-First 44px) */}
+              <div className="grid grid-cols-3 gap-2 border-b border-zinc-800 pb-3">
                 <button
                   type="button"
                   onClick={() => setModalTab('main')}
-                  className={`min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                  className={`min-h-[44px] px-2.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
                     modalTab === 'main'
                       ? 'bg-white text-zinc-950 shadow-md'
                       : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
                   }`}
                 >
-                  <FileText className="w-4 h-4" />
-                  <span>Основное и оплата</span>
+                  <FileText className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{isAdmin ? 'Основное' : 'Работы'}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setModalTab('photos')}
-                  className={`min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                  className={`min-h-[44px] px-2.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
                     modalTab === 'photos'
                       ? 'bg-white text-zinc-950 shadow-md'
                       : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
                   }`}
                 >
-                  <Camera className="w-4 h-4" />
-                  <span>Фотоотчёт</span>
+                  <Camera className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Фото</span>
                   <span
                     className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
                       modalTab === 'photos' ? 'bg-zinc-900 text-white' : 'bg-zinc-800 text-zinc-300'
@@ -1418,6 +1858,19 @@ export default function AdminOrdersPage() {
                   >
                     {(activeOrder.photos?.length || 0) + photosBefore.length + photosAfter.length}
                   </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModalTab('history')}
+                  className={`min-h-[44px] px-2.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    modalTab === 'history'
+                      ? 'bg-white text-zinc-950 shadow-md'
+                      : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <History className="w-4 h-4 shrink-0" />
+                  <span className="truncate">История</span>
                 </button>
               </div>
 
@@ -1443,15 +1896,18 @@ export default function AdminOrdersPage() {
                               <span className="text-[11px] text-sky-400 block">{it.customDescription}</span>
                             )}
                           </div>
-                          <span className="font-mono font-semibold text-white">
-                            {it.itemTotal?.toLocaleString('ru-RU')} ₽
-                          </span>
+                          {isAdmin && it.itemTotal != null && (
+                            <span className="font-mono font-semibold text-white">
+                              {Number(it.itemTotal).toLocaleString('ru-RU')} ₽
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {/* Параметры заезда и сумма (Mobile-First 16px inputs) */}
+                  {isAdmin ? (
+                  /* Параметры заезда и сумма (только админ) */
                   <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-4">
                     <span className="text-[11px] font-semibold text-zinc-300 block uppercase tracking-wider">
                       Параметры заезда и сумма
@@ -1574,17 +2030,61 @@ export default function AdminOrdersPage() {
                     {/* Поле «Заметка для мастеров» */}
                     <div>
                       <label className="block text-zinc-400 mb-1 font-medium text-xs">
-                        Заметка для мастеров (не видна клиенту)
+                        Приватная заметка студии (не видна клиенту и мастерам)
                       </label>
                       <textarea
                         value={editNote}
                         onChange={(e) => setEditNote(e.target.value)}
-                        placeholder="Особенности автомобиля, пожелания клиента, код домофона..."
+                        placeholder="Внутренняя заметка администратора..."
                         rows={2}
                         className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-white text-base sm:text-sm resize-none focus:outline-none focus:border-sky-500"
                       />
                     </div>
                   </div>
+                  ) : (
+                    /* Рабочая карточка для МАСТЕРА (без финансов студии) */
+                    <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3 text-xs sm:text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400">Заезд:</span>
+                        <span className="font-bold text-sky-300">
+                          {formatEntryDateTime(
+                            activeOrder.agreedEntryDateTime ||
+                              (activeOrder.desiredDate
+                                ? `${activeOrder.desiredDate} ${activeOrder.desiredTime || ''}`
+                                : null)
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400">Бокс / Формат:</span>
+                        <span className="font-semibold text-white">
+                          {activeOrder.serviceFormat === 'mobile'
+                            ? activeOrder.deliveryAddress || 'Выезд'
+                            : activeOrder.bay || activeOrder.booking?.workbay?.name || 'В студии'}
+                        </span>
+                      </div>
+                      {activeOrder.carLicensePlate && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400">Госномер:</span>
+                          <span className="font-mono font-bold text-white">{activeOrder.carLicensePlate}</span>
+                        </div>
+                      )}
+                      {activeOrder.clientComment && (
+                        <div className="pt-2 border-t border-zinc-800">
+                          <span className="text-zinc-400 block text-xs mb-1">Комментарий клиента:</span>
+                          <p className="text-zinc-200">{activeOrder.clientComment}</p>
+                        </div>
+                      )}
+                      {activeOrder.myPayoutRub !== undefined && (
+                        <div className="pt-2 border-t border-zinc-800 flex items-center justify-between">
+                          <span className="text-zinc-400">Моя выплата за заказ:</span>
+                          <span className="font-mono font-extrabold text-emerald-300">
+                            {activeOrder.myPayoutRub.toLocaleString('ru-RU')} ₽
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1602,27 +2102,32 @@ export default function AdminOrdersPage() {
 
                     {activeOrder.photos && activeOrder.photos.length > 0 ? (
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                        {activeOrder.photos.map((p) => (
-                          <a
-                            key={p.id}
-                            href={`/api/photos/${p.id}?token=${activeOrder.token}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="aspect-video rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 block group relative"
-                          >
-                            <img
-                              src={`/api/photos/${p.id}?token=${activeOrder.token}`}
-                              alt="Фото клиента"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                              }}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                            />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
-                              <Eye className="w-4 h-4" />
-                            </div>
-                          </a>
-                        ))}
+                        {activeOrder.photos.map((p) => {
+                          const photoUrl = activeOrder.token
+                            ? `/api/photos/${p.id}?token=${activeOrder.token}`
+                            : `/api/photos/${p.id}`;
+                          return (
+                            <a
+                              key={p.id}
+                              href={photoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="aspect-video rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 block group relative"
+                            >
+                              <img
+                                src={photoUrl}
+                                alt="Фото клиента"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                                <Eye className="w-4 h-4" />
+                              </div>
+                            </a>
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="py-3 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
@@ -1640,46 +2145,57 @@ export default function AdminOrdersPage() {
                           <Camera className="w-3.5 h-3.5 text-amber-400" />
                           Фото ДО приёмки ({photosBefore.length})
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => fileInputBeforeRef.current?.click()}
-                          disabled={uploadingPhoto}
-                          className="min-h-[36px] px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-xs flex items-center gap-1 transition-colors"
-                        >
-                          <Upload className="w-3 h-3" />
-                          <span>+ Добавить</span>
-                        </button>
-                        <input
-                          ref={fileInputBeforeRef}
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp"
-                          className="hidden"
-                          onChange={(e) => handlePhotoUpload(e, 'before')}
-                        />
+                        {(isAdmin || activeOrder.assignedMasterId === session?.id) && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => fileInputBeforeRef.current?.click()}
+                              disabled={uploadingPhoto}
+                              className="min-h-[36px] px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-xs flex items-center gap-1 transition-colors"
+                            >
+                              <Upload className="w-3 h-3" />
+                              <span>+ Добавить</span>
+                            </button>
+                            <input
+                              ref={fileInputBeforeRef}
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              className="hidden"
+                              onChange={(e) => handlePhotoUpload(e, 'before')}
+                            />
+                          </>
+                        )}
                       </div>
 
                       {photosBefore.length > 0 ? (
                         <div className="grid grid-cols-2 gap-2">
-                          {photosBefore.map((p) => (
-                            <div key={p.id} className="relative aspect-video rounded-lg overflow-hidden border border-zinc-800 group bg-zinc-950">
-                              <img
-                                src={`/api/photos/${p.id}?token=${activeOrder.token}`}
-                                alt="До"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = 'none';
-                                }}
-                                className="w-full h-full object-cover"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setPhotosBefore((prev) => prev.filter((item) => item.id !== p.id))}
-                                className="absolute top-1 right-1 p-1 rounded bg-black/60 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Удалить фото"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ))}
+                          {photosBefore.map((p) => {
+                            const photoUrl = activeOrder.token
+                              ? `/api/photos/${p.id}?token=${activeOrder.token}`
+                              : `/api/photos/${p.id}`;
+                            return (
+                              <div key={p.id} className="relative aspect-video rounded-lg overflow-hidden border border-zinc-800 group bg-zinc-950">
+                                <img
+                                  src={photoUrl}
+                                  alt="До"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                  }}
+                                  className="w-full h-full object-cover"
+                                />
+                                {isAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPhotosBefore((prev) => prev.filter((item) => item.id !== p.id))}
+                                    className="absolute top-1 right-1 p-1 rounded bg-black/60 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    title="Удалить фото"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       ) : (
                         <div className="py-3 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
@@ -1695,46 +2211,57 @@ export default function AdminOrdersPage() {
                           <Camera className="w-3.5 h-3.5 text-emerald-400" />
                           Фото ПОСЛЕ работ ({photosAfter.length})
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => fileInputAfterRef.current?.click()}
-                          disabled={uploadingPhoto}
-                          className="min-h-[36px] px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-xs flex items-center gap-1 transition-colors"
-                        >
-                          <Upload className="w-3 h-3" />
-                          <span>+ Добавить</span>
-                        </button>
-                        <input
-                          ref={fileInputAfterRef}
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp"
-                          className="hidden"
-                          onChange={(e) => handlePhotoUpload(e, 'after')}
-                        />
+                        {(isAdmin || activeOrder.assignedMasterId === session?.id) && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => fileInputAfterRef.current?.click()}
+                              disabled={uploadingPhoto}
+                              className="min-h-[36px] px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-xs flex items-center gap-1 transition-colors"
+                            >
+                              <Upload className="w-3 h-3" />
+                              <span>+ Добавить</span>
+                            </button>
+                            <input
+                              ref={fileInputAfterRef}
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              className="hidden"
+                              onChange={(e) => handlePhotoUpload(e, 'after')}
+                            />
+                          </>
+                        )}
                       </div>
 
                       {photosAfter.length > 0 ? (
                         <div className="grid grid-cols-2 gap-2">
-                          {photosAfter.map((p) => (
-                            <div key={p.id} className="relative aspect-video rounded-lg overflow-hidden border border-emerald-500/30 group bg-zinc-950">
-                              <img
-                                src={`/api/photos/${p.id}?token=${activeOrder.token}`}
-                                alt="После"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = 'none';
-                                }}
-                                className="w-full h-full object-cover"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setPhotosAfter((prev) => prev.filter((item) => item.id !== p.id))}
-                                className="absolute top-1 right-1 p-1 rounded bg-black/60 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Удалить фото"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ))}
+                          {photosAfter.map((p) => {
+                            const photoUrl = activeOrder.token
+                              ? `/api/photos/${p.id}?token=${activeOrder.token}`
+                              : `/api/photos/${p.id}`;
+                            return (
+                              <div key={p.id} className="relative aspect-video rounded-lg overflow-hidden border border-emerald-500/30 group bg-zinc-950">
+                                <img
+                                  src={photoUrl}
+                                  alt="После"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                  }}
+                                  className="w-full h-full object-cover"
+                                />
+                                {isAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPhotosAfter((prev) => prev.filter((item) => item.id !== p.id))}
+                                    className="absolute top-1 right-1 p-1 rounded bg-black/60 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    title="Удалить фото"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       ) : (
                         <div className="py-3 text-center text-zinc-500 text-xs bg-zinc-950/40 rounded-xl border border-zinc-800/40">
@@ -1744,6 +2271,11 @@ export default function AdminOrdersPage() {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* 5. ВКЛАДКА 3: ИСТОРИЯ ДЕЙСТВИЙ */}
+              {modalTab === 'history' && (
+                <OrderHistory orderId={activeOrder.id} refreshKey={historyKey} />
               )}
 
               {modalError && (
@@ -1768,15 +2300,17 @@ export default function AdminOrdersPage() {
               >
                 Закрыть
               </button>
-              <button
-                type="button"
-                onClick={() => handleSaveModal()}
-                disabled={savingOrder}
-                className="min-h-[44px] w-full sm:w-auto px-6 py-2.5 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2"
-              >
-                <Save className="w-4 h-4" />
-                <span>{savingOrder ? 'Сохранение...' : 'Сохранить изменения'}</span>
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleSaveModal()}
+                  disabled={savingOrder}
+                  className="min-h-[44px] w-full sm:w-auto px-6 py-2.5 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{savingOrder ? 'Сохранение...' : 'Сохранить изменения'}</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

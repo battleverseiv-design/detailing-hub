@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import { getPhotoBuffer } from '@/lib/storage';
-import { verifyAdminSession } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
@@ -18,9 +18,9 @@ export async function GET(
       return new NextResponse('Bad request', { status: 400 });
     }
 
-    // 1. Проверка прав: Авторизован ли администратор студии
-    const isAdmin = await verifyAdminSession();
-    let isAuthorized = isAdmin;
+    // 1. Проверка прав: Авторизован ли активный сотрудник студии (admin или master)
+    const session = await getSession();
+    let isAuthorized = session !== null;
 
     // 2. Проверка прав: Передан ли токен существующего заказа
     const token = req.nextUrl.searchParams.get('token');

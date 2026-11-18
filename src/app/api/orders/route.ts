@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { verifyAdminSession } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
+import { actorFromUser, CLIENT_ACTOR, logOrderEvent } from '@/lib/audit';
 import { getStudioSettings, syncTariffsToServices } from '@/lib/studio-service';
 import { calculateItemPrice, calculateOrderSummary } from '@/lib/pricing';
 import {
@@ -184,9 +185,9 @@ export async function POST(req: NextRequest) {
     }
 
     // ---- Права: админские поля работают ТОЛЬКО при валидной сессии админа ----
-    // Раньше isAdminCreated и preliminaryTotal принимались от любого анонима:
-    // можно было создать «согласованный» заказ за 1 ₽.
-    const isAdminCreated = body.isAdminCreated === true && (await verifyAdminSession());
+    // Мастер НЕ может создавать «согласованные» заказы с произвольной ценой.
+    const session = body.isAdminCreated === true ? await getSession() : null;
+    const isAdminCreated = session?.role === 'admin';
     const adminPriceRaw = isAdminCreated ? body.preliminaryTotal : undefined;
     const adminPrice =
       adminPriceRaw == null
@@ -447,6 +448,16 @@ export async function POST(req: NextRequest) {
               mobileServicePrice: settings.mobileServicePrice,
             }),
           },
+        });
+
+        await logOrderEvent(tx, {
+          orderId: order.id,
+          actor: isAdminCreated && session ? actorFromUser(session) : CLIENT_ACTOR,
+          action: 'order.created',
+          message:
+            isAdminCreated && session
+              ? `Администратор ${session.name} создал запись вручную`
+              : 'Заявка создана клиентом с сайта',
         });
 
         if (preparedBooking) {

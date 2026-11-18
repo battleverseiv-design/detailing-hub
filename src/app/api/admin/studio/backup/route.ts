@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminSession } from '@/lib/auth';
+import { requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
-export async function GET(req: NextRequest) {
-  const isAuth = await verifyAdminSession();
-  if (!isAuth) {
-    return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
-  }
+export async function GET(_req: NextRequest) {
+  const auth = await requireRole('admin');
+  if (!auth.ok) return auth.response;
 
   try {
     const [orders, studioConfig, workbays, services, bookings, availabilities, dateOverrides] = await Promise.all([

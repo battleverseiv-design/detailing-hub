@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminSession } from '@/lib/auth';
+import { assertSameOrigin, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
 async function getDemoUser(userIdOrSlug?: string) {
@@ -34,10 +34,8 @@ async function getDemoUser(userIdOrSlug?: string) {
 }
 
 export async function GET(req: NextRequest) {
-  const isAuth = await verifyAdminSession();
-  if (!isAuth) {
-    return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
-  }
+  const auth = await requireRole('admin');
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(req.url);
@@ -66,10 +64,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const isAuth = await verifyAdminSession();
-  if (!isAuth) {
-    return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
-  }
+  const csrf = assertSameOrigin(req);
+  if (csrf) return csrf;
+
+  const auth = await requireRole('admin');
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await req.json();

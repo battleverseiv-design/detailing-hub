@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
-import { verifyAdminSession } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 
 export default async function AdminRootPage() {
-  const isAuth = await verifyAdminSession();
-  if (!isAuth) {
+  const session = await getSession();
+  if (!session) {
     redirect('/admin/login');
   }
   redirect('/admin/orders');
